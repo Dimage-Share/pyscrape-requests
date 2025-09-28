@@ -125,6 +125,13 @@ python web.py
 | bodytype   | ボディタイプ行                                                           |
 | repair     | 修復歴表記                                                               |
 | location   | 所在地 (県/市等をヒューリスティック抽出, 取得不能時 null)                |
+| option     | 詳細ページ h1 内 <span> 部分 (オプション/グレード等)                     |
+| wd         | 詳細ページ仕様テーブル tr[1]/td[2] (例: ホイールベース 等)               |
+| seat       | 仕様テーブル tr[4]/td[2] 乗車定員                                        |
+| door       | 仕様テーブル tr[5]/td[2] ドア数                                          |
+| fuel       | 燃料種別 (section[8] 燃費テーブル tr[2]/td[2])                           |
+| handle     | ハンドル位置 (仕様テーブル tr[2]/td[2])                                  |
+| jc08       | JC08 燃費指標 (section[8] 燃費テーブル tr[5]/td[1])                      |
 | source     | カード HTML 断片 (監査/再パース用。サイズ増大に注意)                     |
 | url        | 詳細ページ絶対 URL (例: https://www.carsensor.net/usedcar/detail/AU.../) |
 | raw_json   | (外部出力しない) 中間テキスト / notes_array / 元フィールド文字列 JSON    |
@@ -140,15 +147,16 @@ python web.py
 - source: 解析開始直後に取得したカード要素の HTML。後処理で DOM 変化があっても再パース可能。
 
 ### 旧 Goo-net バージョンからの主な変更 (CarSensor移行)
-| 旧              | 新     | 変更理由                                                  |
-| --------------- | ------ | --------------------------------------------------------- |
-| total_price_yen | price  | 短縮・単位明確化 (万円固定)                               |
-| mileage_km      | rd     | 頻出短縮 (run distance) + 内部指標簡潔化                  |
-| displacement_cc | engine | 用語汎用化                                                |
-| repair_history  | repair | 短縮                                                      |
-| notes (配列)    | (廃止) | 個別カラム抽出 + 元テキストは raw_json.notes_array に保持 |
-| (なし)          | source | 監査/再抽出用 HTML 断片                                   |
-| (なし)          | url    | 詳細遷移/後続スクレイピング起点                           |
+| 旧              | 新                                               | 変更理由                                                  |
+| --------------- | ------------------------------------------------ | --------------------------------------------------------- |
+| total_price_yen | price                                            | 短縮・単位明確化 (万円固定)                               |
+| mileage_km      | rd                                               | 頻出短縮 (run distance) + 内部指標簡潔化                  |
+| displacement_cc | engine                                           | 用語汎用化                                                |
+| repair_history  | repair                                           | 短縮                                                      |
+| notes (配列)    | (廃止)                                           | 個別カラム抽出 + 元テキストは raw_json.notes_array に保持 |
+| (なし)          | source                                           | 監査/再抽出用 HTML 断片                                   |
+| (なし)          | url                                              | 詳細遷移/後続スクレイピング起点                           |
+| (なし)          | option / wd / seat / door / fuel / handle / jc08 | 詳細ページ追加取得フィールド                              |
 
 既存 (Goo-net版) DB を保持したままでも不足カラムは自動追加されますが、Goo 特有 ID は再利用されません。クリーンにしたい場合:
 ```powershell

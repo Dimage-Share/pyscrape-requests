@@ -432,3 +432,76 @@ def get_next_page_url_carsensor(html: str, current_url: str) -> Optional[str]:
         if num == target:
             return h if h.startswith('http') else f"https://www.carsensor.net{h}"
     return None
+
+
+# ---- 詳細ページ抽出 ----
+def _sanitize_detail_text(t: Optional[str]) -> Optional[str]:
+    if t is None:
+        return None
+    s = t.replace('\r', '\n')
+    s = s.strip()
+    if not s:
+        return None
+    # 改行・タブ除去 + 全半角スペース除去は既存方針に揃える
+    s = s.replace('\t', '').replace('\n', '')
+    s = s.replace(' ', '').replace('\u3000', '')
+    return s or None
+
+
+def parse_car_detail(html: str) -> dict[str, Optional[str]]:
+    """詳細ページ HTML から指定 XPath の値を抽出。
+
+    指定: (先頭カード例参照)
+      name: /html/body/div[1]/div[2]/main/section/h1 から <span> を除いた文字列
+      option: /html/body/div[1]/div[2]/main/section/h1/span
+      repair: /html/body/div[1]/div[2]/main/section/div/div[2]/div[3]/div[3]/p[2]
+      wd: /html/body/div[1]/div[4]/div/div[1]/section[3]/div/table/tbody/tr[1]/td[2]
+      seat: /html/body/div[1]/div[4]/div/div[1]/section[3]/div/table/tbody/tr[4]/td[2]
+      door: /html/body/div[1]/div[4]/div/div[1]/section[3]/div/table/tbody/tr[5]/td[2]
+      fuel: /html/body/div[1]/div[4]/div/div[1]/section[8]/div/table/tbody/tr[2]/td[2]
+      handle: /html/body/div[1]/div[4]/div/div[1]/section[3]/div/table/tbody/tr[2]/td[2]
+      jc08: /html/body/div[1]/div[4]/div/div[1]/section[8]/div/table/tbody/tr[5]/td[1]
+    """
+    try:
+        tree = lhtml.fromstring(html)
+    except Exception:
+        return {}
+
+    def xp_text(xp: str, join_children: bool = True) -> Optional[str]:
+        try:
+            nodes = tree.xpath(xp)
+            if not nodes:
+                return None
+            node = nodes[0]
+            if hasattr(node, 'text_content'):
+                if join_children:
+                    return _sanitize_detail_text(node.text_content())
+                else:
+                    # 直下テキストのみ
+                    txt = (node.text or '')
+                    return _sanitize_detail_text(txt)
+            if isinstance(node, str):
+                return _sanitize_detail_text(node)
+        except Exception:
+            return None
+        return None
+
+    # option span 抽出後、name は span 部分を除去
+    option_raw = xp_text('/html/body/div[1]/div[2]/main/section/h1/span')
+    name_full = xp_text('/html/body/div[1]/div[2]/main/section/h1')
+    name_val = name_full
+    if option_raw and name_full and option_raw in name_full:
+        name_val = _sanitize_detail_text(name_full.replace(option_raw, ''))
+
+    detail = {
+        'name': name_val,
+        'option': option_raw,
+        'repair': xp_text('/html/body/div[1]/div[2]/main/section/div/div[2]/div[3]/div[3]/p[2]'),
+        'wd': xp_text('/html/body/div[1]/div[4]/div/div[1]/section[3]/div/table/tbody/tr[1]/td[2]'),
+        'seat': xp_text('/html/body/div[1]/div[4]/div/div[1]/section[3]/div/table/tbody/tr[4]/td[2]'),
+        'door': xp_text('/html/body/div[1]/div[4]/div/div[1]/section[3]/div/table/tbody/tr[5]/td[2]'),
+        'fuel': xp_text('/html/body/div[1]/div[4]/div/div[1]/section[8]/div/table/tbody/tr[2]/td[2]'),
+        'handle': xp_text('/html/body/div[1]/div[4]/div/div[1]/section[3]/div/table/tbody/tr[2]/td[2]'),
+        'jc08': xp_text('/html/body/div[1]/div[4]/div/div[1]/section[8]/div/table/tbody/tr[5]/td[1]'),
+    }
+    return detail

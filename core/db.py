@@ -29,6 +29,13 @@ CREATE TABLE IF NOT EXISTS car (
     bodytype TEXT,
     repair TEXT,
     location TEXT,
+    option TEXT,
+    wd TEXT,
+    seat TEXT,
+    door TEXT,
+    fuel TEXT,
+    handle TEXT,
+    jc08 TEXT,
     source TEXT,
     url TEXT,
     created_at TEXT NOT NULL,
@@ -46,6 +53,13 @@ CREATE TABLE IF NOT EXISTS goo (
     bodytype TEXT,
     repair TEXT,
     location TEXT,
+    option TEXT,
+    wd TEXT,
+    seat TEXT,
+    door TEXT,
+    fuel TEXT,
+    handle TEXT,
+    jc08 TEXT,
     source TEXT,
     url TEXT,
     created_at TEXT NOT NULL,
@@ -87,13 +101,13 @@ def init_db(db_path: Optional[Path] = None) -> None:
     try:
         with conn:
             conn.executescript(SCHEMA_SQL)
-            for col in ("price", "rd", "engine", "color", "mission", "bodytype", "repair", "source", "url"):
+            for col in ("price", "rd", "engine", "color", "mission", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08"):
                 try:
                     conn.execute(f"ALTER TABLE car ADD COLUMN {col} TEXT")
                 except Exception:
                     pass
             # ensure goo table columns exist (same as car)
-            for col in ("price", "rd", "engine", "color", "mission", "bodytype", "repair", "source", "url"):
+            for col in ("price", "rd", "engine", "color", "mission", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08"):
                 try:
                     conn.execute(f"ALTER TABLE goo ADD COLUMN {col} TEXT")
                 except Exception:

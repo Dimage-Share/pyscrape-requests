@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from .client import CarSensorClient
-from .carsensor_parser import parse_cars_carsensor, get_next_page_url_carsensor
+from .carsensor_parser import parse_cars_carsensor, get_next_page_url_carsensor, parse_car_detail
 from .db import init_db, bulk_upsert_cars, truncate_goo, bulk_insert_goo
 from .logger import Logger
 
@@ -46,6 +46,8 @@ class Scrape:
             if cars:
                 # Collect cars, insert later into goo
                 all_cars.extend(cars)
+                # --- 詳細ページ取得 ---
+                self._enrich_with_details(client, cars)
             elapsed_ms = (time.perf_counter() - t_page_start) * 1000.0
             log.info(f"Page done page=1 records={len(cars)} total={len(all_cars)} {elapsed_ms:.1f}ms")
             pages_fetched = 1
@@ -73,6 +75,7 @@ class Scrape:
                 cars = parse_cars_carsensor(html)
                 if cars:
                     all_cars.extend(cars)
+                    self._enrich_with_details(client, cars)
                 else:
                     log.debug(f"page={target_page} records=0")
                 # Increment pages_fetched only once per full page retrieval
@@ -282,3 +285,39 @@ class Scrape:
         content = '# Summary\n' + '\n'.join(['````', *lines, '````', ''])
         # Windowsメモ帳互換のため BOM 付きUTF-8で保存
         path.write_text(content, encoding='utf-8-sig')
+
+    # ---- 詳細ページ統合 ----
+    @staticmethod
+    def _enrich_with_details(client: CarSensorClient, cars: List[Any]) -> None:
+        """各 CarRecord の url 先 (詳細ページ) を開き追加フィールドを埋める。
+
+        仕様:
+          - 404/エラー時はスキップ (警告ログのみ)
+          - 過剰アクセス防止のため現在は逐次 (将来並列化可)
+          - 既に name があり詳細 name が取れた場合は詳細側を優先
+        """
+        for car in cars:
+            detail_url = getattr(car, 'url', None)
+            if not detail_url:
+                continue
+            try:
+                resp = client.session.get(detail_url, timeout=client.config.timeout)
+                if resp.status_code != 200:
+                    log.debug(f"detail skip status={resp.status_code} url={detail_url}")
+                    continue
+                resp.encoding = 'utf-8'
+                data = parse_car_detail(resp.text)
+                if not data:
+                    continue
+                # 上書き (None を無理に書かない)
+                if data.get('name'): car.name = data['name']  # type: ignore[attr-defined]
+                if data.get('option'): car.option = data['option']  # type: ignore[attr-defined]
+                if data.get('repair'): car.repair = data['repair']  # type: ignore[attr-defined]
+                if data.get('wd'): car.wd = data['wd']  # type: ignore[attr-defined]
+                if data.get('seat'): car.seat = data['seat']  # type: ignore[attr-defined]
+                if data.get('door'): car.door = data['door']  # type: ignore[attr-defined]
+                if data.get('fuel'): car.fuel = data['fuel']  # type: ignore[attr-defined]
+                if data.get('handle'): car.handle = data['handle']  # type: ignore[attr-defined]
+                if data.get('jc08'): car.jc08 = data['jc08']  # type: ignore[attr-defined]
+            except Exception as e:  # noqa: BLE001
+                log.debug(f"detail fetch fail url={detail_url} error={e}")
