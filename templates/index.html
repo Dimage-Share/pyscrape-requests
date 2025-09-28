@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<meta charset="UTF-8" />
+	<title>Goo-net 検索</title>
+	<style>
+		:root { --sidebar-width: 260px; }
+		body { font-family: system-ui, sans-serif; margin:0; display:flex; }
+		aside { width:var(--sidebar-width); background:#f7f7f9; border-right:1px solid #ddd; padding:16px; box-sizing:border-box; }
+		main { flex:1; padding:20px; overflow:auto; }
+		h1 { margin-top:0; font-size:1.2rem; }
+		fieldset { border:1px solid #ccc; margin:0 0 12px; padding:8px 10px; }
+		fieldset legend { font-size:.85rem; padding:0 4px; }
+		label { display:block; font-size:.8rem; margin:4px 0 2px; }
+		select, input[type=text], input[type=number] { width:100%; box-sizing:border-box; padding:4px; }
+		.actions { display:flex; gap:6px; margin-top:8px; }
+		button, .btn-link { cursor:pointer; font-size:.8rem; padding:6px 10px; }
+		.btn-primary { background:#2b6cb0; color:#fff; border:1px solid #1d4f7d; }
+		.btn-secondary { background:#eee; border:1px solid #bbb; }
+		table { border-collapse:collapse; width:100%; font-size:.75rem; }
+		th, td { border:1px solid #ccc; padding:3px 6px; text-align:left; vertical-align:top; }
+		th { background:#fafafa; position:sticky; top:0; z-index:2; }
+		th.num, td.num { text-align:right; }
+		.flash { padding:6px 10px; margin:4px 0; border-radius:4px; font-size:.75rem; }
+		.flash.info { background:#eef; }
+		.flash.error { background:#fdd; }
+		.summary-files { margin-top:20px; }
+		.count { font-size:.8rem; margin:4px 0 10px; color:#555; }
+		.scroll-x { overflow-x:auto; }
+		a { color:#1d4f7d; }
+	</style>
+</head>
+<body>
+	<aside>
+		<h1>検索条件</h1>
+		<form method="get" action="/">
+			<input type="hidden" name="sort" value="{{ sort }}" />
+			<input type="hidden" name="dir" value="{{ dir }}" />
+			<fieldset>
+				<legend>基本</legend>
+				<label>ボディタイプ</label>
+				<select name="bodytype">
+					<option value="">(any)</option>
+					{% for v in bodytypes %}<option value="{{ v }}" {% if filters.bodytype==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>ミッション</label>
+				<select name="mission">
+					<option value="">(any)</option>
+					{% for v in missions %}<option value="{{ v }}" {% if filters.mission==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>修復歴</label>
+				<select name="repair">
+					<option value="">(any)</option>
+					{% for v in repairs %}<option value="{{ v }}" {% if filters.repair==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>所在地</label>
+				<select name="location">
+					<option value="">(any)</option>
+					{% for v in locations %}<option value="{{ v }}" {% if filters.location==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>年式</label>
+				<select name="year">
+					<option value="">(any)</option>
+					{% for v in years %}<option value="{{ v }}" {% if filters.year|int == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+			</fieldset>
+			<fieldset>
+				<legend>価格(万円)</legend>
+				<label>最小</label><input type="number" name="price_min" value="{{ filters.price_min }}" />
+				<label>最大</label><input type="number" name="price_max" value="{{ filters.price_max }}" />
+			</fieldset>
+			<div class="actions">
+				<button class="btn-primary" type="submit">検索</button>
+				<a class="btn-link btn-secondary" href="/">リセット</a>
+			</div>
+		</form>
+		<hr />
+		<h2 style="font-size:1rem;">スクレイプ</h2>
+		<form method="post" action="{{ url_for('main.scrape') }}">
+			<label style="margin-top:6px;">Pages</label>
+			<input name="pages" value="1" size="4" />
+			<div class="actions">
+				<button class="btn-secondary" type="submit">Run</button>
+			</div>
+		</form>
+		<div class="summary-files">
+			<h2 style="font-size:1rem;">Summary Files</h2>
+			{% if files %}
+				<ul style="padding-left:16px; margin:4px 0; max-height:180px; overflow:auto;">
+				{% for f in files %}
+					<li style="font-size:.7rem;">
+						<a href="{{ url_for('main.show_file', name=f) }}">{{ f }}</a>
+					</li>
+				{% endfor %}
+				</ul>
+			{% else %}<p style="font-size:.7rem;">なし</p>{% endif %}
+		</div>
+	</aside>
+	<main>
+		<h1>検索結果</h1>
+		{% with messages = get_flashed_messages(with_categories=true) %}
+			{% if messages %}
+				{% for cat, msg in messages %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
+			{% endif %}
+		{% endwith %}
+		<div class="count">{{ rows|length }} 件 (最大300件表示)</div>
+		<div class="scroll-x">
+			<table>
+				<thead>
+					<tr>
+						<th data-col="url" class="no-sort">リンク</th>
+						<th data-col="price" class="sortable num">価格(万)</th>
+						<th data-col="year" class="sortable num">年式</th>
+						<th data-col="name" class="sortable">名前</th>
+						<th data-col="rd" class="sortable num">走行距離</th>
+						<th data-col="engine" class="sortable num">排気量</th>
+						<th data-col="mission" class="sortable">ミッション</th>
+						<th data-col="bodytype" class="sortable">ボディ</th>
+						<th data-col="location" class="sortable">所在地</th>
+						<th data-col="repair" class="sortable">修復</th>
+					</tr>
+				</thead>
+				<tbody>
+				{% for r in rows %}
+					<tr>
+						<td>{% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener">open</a>{% endif %}</td>
+						<td class="num">{% if r.price is not none %}{{ '{:,}'.format(r.price) }}万{% endif %}</td>
+						<td class="num">{% if r.year is not none %}{{ r.year }}年式{% endif %}</td>
+						<td>{{ r.name }}</td>
+						<td class="num">{% if r.rd is not none %}{{ '{:,}'.format(r.rd) }}km{% endif %}</td>
+						<td class="num">{% if r.engine is not none %}{{ '{:,}'.format(r.engine) }}cc{% endif %}</td>
+						<td>{% if r.mission and r.mission != 'ミッション' %}{{ r.mission }}{% endif %}</td>
+						<td>{% if r.bodytype and r.bodytype != 'ボディタイプ' %}{{ r.bodytype }}{% endif %}</td>
+						<td>{{ r.location or '' }}</td>
+						<td>{{ r.repair or '' }}</td>
+					</tr>
+				{% endfor %}
+				{% if rows|length == 0 %}
+					<tr><td colspan="10" style="text-align:center;color:#777;">該当なし</td></tr>
+				{% endif %}
+				</tbody>
+			</table>
+		</div>
+		<script>
+		(function(){
+		  const params = new URLSearchParams(window.location.search);
+		  const currentSort = params.get('sort') || '{{ sort }}';
+		  const currentDir = params.get('dir') || '{{ dir }}';
+		  document.querySelectorAll('th.sortable').forEach(th => {
+		    const col = th.getAttribute('data-col');
+		    if(col === currentSort){
+		      th.style.background = '#dde7f5';
+		      const arrow = currentDir === 'asc' ? '▲' : '▼';
+		      th.innerHTML = th.textContent + ' ' + arrow;
+		    }
+		    th.addEventListener('click', () => {
+		      let dir = 'asc';
+		      if(col === currentSort){ dir = currentDir === 'asc' ? 'desc' : 'asc'; }
+		      params.set('sort', col); params.set('dir', dir);
+		      window.location.search = params.toString();
+		    });
+		  });
+
+		  // Auto submit filters
+		  const form = document.querySelector('aside form[action="/"]');
+		  if(form){
+		    const debounce = (fn, ms) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
+		    const submit = ()=>{ form.submit(); };
+		    const dsubmit = debounce(submit, 350);
+		    form.querySelectorAll('select').forEach(el => { el.addEventListener('change', submit); });
+		    form.querySelectorAll('input[type=number], input[type=text]').forEach(el => { el.addEventListener('input', dsubmit); });
+		  }
+		})();
+		</script>
+	</main>
+</body>
+</html>
