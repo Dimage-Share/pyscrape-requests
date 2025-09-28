@@ -24,8 +24,16 @@ def create_app(config: Dict[str, Any] | None = None) -> Flask:
     from .views import bp  # noqa: WPS433 (late import to avoid circular)
     app.register_blueprint(bp)
     
-    # Expose scraper via app extensions for access in views
+    # Expose scraper + shared scrape state via app extensions for access in views
     app.extensions['scraper'] = scraper
+    app.extensions['scrape_state'] = {
+        'running': False,
+        'last_started': None,
+        'last_finished': None,
+        'last_error': None,
+        'last_pages': None,
+        'progress': None,
+    }
     
     @app.cli.command('scrape')
     def scrape_command():  # pragma: no cover - CLI helper

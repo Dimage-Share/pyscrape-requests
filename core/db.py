@@ -55,8 +55,30 @@ CREATE TABLE IF NOT EXISTS goo (
 
 
 def get_connection(db_path: Optional[Path] = None) -> sqlite3.Connection:
+    """Create a new sqlite3 connection with WAL + busy timeout for concurrency.
+
+    Notes:
+        - check_same_thread=False を指定しスレッド間共有は *しない* 方針。
+          (毎回新規接続を返すため安全) ただしFlask側から並列要求が来ても
+          各リクエストで独立コネクションになる。
+        - isolation_level=None により autocommit モード。明示的に with conn: を
+          使う箇所はトランザクション開始される (sqlite3 は __enter__ で begin)。
+        - WAL モードにより同時読取 (複数) + 単一書込がブロック短縮される。
+    """
     path = Path(db_path) if db_path else Path(DB_FILENAME)
-    conn = sqlite3.connect(path)
+    conn = sqlite3.connect(
+        path,
+        timeout=30.0,  # busy timeout for writer contention
+        check_same_thread=False,
+        isolation_level=None,  # autocommit style
+    )
+    try:
+        # Set WAL journal mode & reasonable synchronous for durability vs speed
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
+        conn.execute("PRAGMA busy_timeout=30000;")  # 30s
+    except Exception as e:  # noqa: BLE001
+        log.debug(f"pragma setup fail error={e}")
     return conn
 
 

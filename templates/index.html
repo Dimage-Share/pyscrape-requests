@@ -78,10 +78,18 @@
 		<h2 style="font-size:1rem;">スクレイプ</h2>
 		<form method="post" action="{{ url_for('main.scrape') }}">
 			<label style="margin-top:6px;">Pages</label>
-			<input name="pages" value="1" size="4" />
+			<input name="pages" value="1" size="4" {% if state.running %}disabled{% endif %} />
 			<div class="actions">
-				<button class="btn-secondary" type="submit">Run</button>
+				<button class="btn-secondary" type="submit" {% if state.running %}disabled style="opacity:.5;"{% endif %}>Run</button>
 			</div>
+			{% if state.running %}
+			<p style="font-size:.65rem;color:#444;">実行中... (pages={{ state.last_pages }})</p>
+			{% else %}
+			  {% if state.last_finished %}
+			  <p style="font-size:.6rem;color:#555;">最終完了: {{ state.last_finished }}</p>
+			  {% endif %}
+			{% endif %}
+			{% if state.last_error %}<p style="font-size:.65rem;color:#b30000;">Error: {{ state.last_error }}</p>{% endif %}
 		</form>
 		<div class="summary-files">
 			<h2 style="font-size:1rem;">Summary Files</h2>

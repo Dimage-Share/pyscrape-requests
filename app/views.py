@@ -102,7 +102,8 @@ def index():
     finally:
         conn.close()
     files = _list_summary_files()
-    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, missions=missions, repairs=repairs, locations=locations, years=years, sort=sort, dir=dir_)
+    state = current_app.extensions.get('scrape_state') or {}
+    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, missions=missions, repairs=repairs, locations=locations, years=years, sort=sort, dir=dir_, state=state)
 
 
 @bp.route('/scrape', methods=['POST'])
@@ -114,8 +115,13 @@ def scrape():
         flash('pages は整数で指定してください', 'error')
         return redirect(url_for('main.index'))
     scraper = current_app.extensions['scraper']
-    path = scraper.run(pages_i, {})
-    flash(f'Scrape done: {path.name}', 'info')
+    state = current_app.extensions.setdefault('scrape_state', {})
+    from core.background import start_scrape_async
+    started = start_scrape_async(scraper, pages_i, state, params={})
+    if started:
+        flash(f'スクレイプ開始 (pages={pages_i})', 'info')
+    else:
+        flash('既にスクレイプ実行中です', 'error')
     return redirect(url_for('main.index'))
 
 
