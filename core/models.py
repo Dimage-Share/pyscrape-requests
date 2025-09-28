@@ -8,27 +8,28 @@ import json
 @dataclass
 class CarRecord:
     id: str
-    name: Optional[str]
-    price: Optional[int]
-    year: Optional[int]
-    rd: Optional[int]
-    engine: Optional[int]
-    repair: Optional[str]
-    location: Optional[str]
-    raw: Dict[str, Any]
+    manufacturer: Optional[str] = None  # 新規: name分割 item[0]
+    name: Optional[str] = None          # 新仕様: name分割 item[1]以降
+    price: Optional[int] = None
+    year: Optional[int] = None
+    rd: Optional[int] = None
+    engine: Optional[int] = None
+    repair: Optional[str] = None
+    location: Optional[str] = None
+    raw: Dict[str, Any] = None
     color: Optional[str] = None
-    mission: Optional[str] = None
+    mission1: Optional[str] = None      # 新規: mission2から抽出
+    mission2: Optional[str] = None      # 旧missionをリネーム
     bodytype: Optional[str] = None
     source: Optional[str] = None
     url: Optional[str] = None
-    # 新規追加フィールド (詳細ページ由来)
-    option: Optional[str] = None  # h1 内 <span> 部分
-    wd: Optional[str] = None      # ホイールベース等 (?) 指定セル
+    option: Optional[str] = None
+    wd: Optional[str] = None
     seat: Optional[str] = None
     door: Optional[str] = None
     fuel: Optional[str] = None
     handle: Optional[str] = None
-    jc08: Optional[str] = None    # 燃費関連指標 (JC08)
+    jc08: Optional[str] = None
     
     def to_db_row(self) -> Dict[str, Any]:
         d = asdict(self)

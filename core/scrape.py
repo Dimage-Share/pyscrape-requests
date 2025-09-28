@@ -87,9 +87,45 @@ class Scrape:
         if pages_fetched == 1 and pages > 1:
             log.debug("Only first page fetched; stopping.")
         
-        # Insert all collected records into goo table (fresh)
+        # --- 取得後: name分割・missionリネーム・jc08整形 ---
+        for car in all_cars:
+            # name分割
+            n = getattr(car, 'name', None)
+            if n and isinstance(n, str):
+                items = n.split(' ')
+                if len(items) >= 2:
+                    car.manufacturer = items[0]
+                    car.name = ' '.join(items[1:])
+                elif len(items) == 1:
+                    car.manufacturer = items[0]
+                    car.name = ''
+            # mission→mission2リネーム
+            if hasattr(car, 'mission2') or hasattr(car, 'mission'):
+                mval = getattr(car, 'mission', None)
+                if mval is not None:
+                    car.mission2 = mval
+                    if hasattr(car, 'mission'):
+                        delattr(car, 'mission')
+            # mission1抽出
+            m2 = getattr(car, 'mission2', None)
+            if m2 and isinstance(m2, str):
+                for key in ['CVT', 'MT', 'AT']:
+                    if key in m2:
+                        car.mission1 = key
+                        break
+            # jc08 '(km/L)'除去
+            jc = getattr(car, 'jc08', None)
+            if jc and isinstance(jc, str):
+                car.jc08 = jc.replace('（km/L）', '').replace('(km/L)', '').strip() or None
         inserted = bulk_insert_goo(all_cars)
         log.info(f"goo insert records={inserted}")
+        # car テーブルにも同内容を upsert (分析/将来差分用途)
+        try:
+            from .db import bulk_upsert_cars
+            upserted = bulk_upsert_cars(all_cars)
+            log.info(f"car upsert records={upserted}")
+        except Exception as e:  # noqa: BLE001
+            log.warn(f"car upsert failed error={e}")
         # Build per-bodytype summaries (price ascending)
         db_rows = [c.to_db_row() for c in all_cars]
         body_files = self.write_grouped_summaries(db_rows)

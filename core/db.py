@@ -19,13 +19,15 @@ DB_FILENAME = "database.db"
 SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS car (
     id TEXT PRIMARY KEY,
+    manufacturer TEXT,
     name TEXT,
     price INTEGER,
     year INTEGER,
     rd INTEGER,
     engine INTEGER,
     color TEXT,
-    mission TEXT,
+    mission1 TEXT,
+    mission2 TEXT,
     bodytype TEXT,
     repair TEXT,
     location TEXT,
@@ -43,13 +45,15 @@ CREATE TABLE IF NOT EXISTS car (
 );
 CREATE TABLE IF NOT EXISTS goo (
     id TEXT PRIMARY KEY,
+    manufacturer TEXT,
     name TEXT,
     price INTEGER,
     year INTEGER,
     rd INTEGER,
     engine INTEGER,
     color TEXT,
-    mission TEXT,
+    mission1 TEXT,
+    mission2 TEXT,
     bodytype TEXT,
     repair TEXT,
     location TEXT,
@@ -101,13 +105,13 @@ def init_db(db_path: Optional[Path] = None) -> None:
     try:
         with conn:
             conn.executescript(SCHEMA_SQL)
-            for col in ("price", "rd", "engine", "color", "mission", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08"):
+            for col in ("manufacturer", "price", "rd", "engine", "color", "mission1", "mission2", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08"):
                 try:
                     conn.execute(f"ALTER TABLE car ADD COLUMN {col} TEXT")
                 except Exception:
                     pass
             # ensure goo table columns exist (same as car)
-            for col in ("price", "rd", "engine", "color", "mission", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08"):
+            for col in ("manufacturer", "price", "rd", "engine", "color", "mission1", "mission2", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08"):
                 try:
                     conn.execute(f"ALTER TABLE goo ADD COLUMN {col} TEXT")
                 except Exception:
@@ -147,9 +151,9 @@ def bulk_insert_goo(records: Iterable[CarRecord], db_path: Optional[Path] = None
                 conn.execute(
                     """
                     INSERT OR REPLACE INTO goo (
-                        id,name,price,year,rd,engine,color,mission,bodytype,repair,location,source,url,created_at,raw_json
+                        id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,source,url,created_at,raw_json
                     ) VALUES (
-                        :id,:name,:price,:year,:rd,:engine,:color,:mission,:bodytype,:repair,:location,:source,:url,:created_at,:raw_json
+                        :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:source,:url,:created_at,:raw_json
                     );
                     """,
                     row,
@@ -169,21 +173,30 @@ def upsert_car(record: CarRecord, db_path: Optional[Path] = None) -> None:
             conn.execute(
                 """
                 INSERT INTO car (
-                    id,name,price,year,rd,engine,color,mission,bodytype,repair,location,source,url,created_at,raw_json
+                    id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,source,url,created_at,raw_json
                 ) VALUES (
-                    :id,:name,:price,:year,:rd,:engine,:color,:mission,:bodytype,:repair,:location,:source,:url,:created_at,:raw_json
+                    :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:source,:url,:created_at,:raw_json
                 )
                 ON CONFLICT(id) DO UPDATE SET
+                    manufacturer=excluded.manufacturer,
                     name=excluded.name,
                     price=excluded.price,
                     year=excluded.year,
                     rd=excluded.rd,
                     engine=excluded.engine,
                     color=excluded.color,
-                    mission=excluded.mission,
+                    mission1=excluded.mission1,
+                    mission2=excluded.mission2,
                     bodytype=excluded.bodytype,
                     repair=excluded.repair,
                     location=excluded.location,
+                    option=excluded.option,
+                    wd=excluded.wd,
+                    seat=excluded.seat,
+                    door=excluded.door,
+                    fuel=excluded.fuel,
+                    handle=excluded.handle,
+                    jc08=excluded.jc08,
                     source=excluded.source,
                     url=excluded.url,
                     raw_json=excluded.raw_json
@@ -206,21 +219,30 @@ def bulk_upsert_cars(records: Iterable[CarRecord], db_path: Optional[Path] = Non
                 conn.execute(
                     """
                     INSERT INTO car (
-                        id,name,price,year,rd,engine,color,mission,bodytype,repair,location,source,url,created_at,raw_json
+                        id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,source,url,created_at,raw_json
                     ) VALUES (
-                        :id,:name,:price,:year,:rd,:engine,:color,:mission,:bodytype,:repair,:location,:source,:url,:created_at,:raw_json
+                        :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:source,:url,:created_at,:raw_json
                     )
                     ON CONFLICT(id) DO UPDATE SET
+                        manufacturer=excluded.manufacturer,
                         name=excluded.name,
                         price=excluded.price,
                         year=excluded.year,
                         rd=excluded.rd,
                         engine=excluded.engine,
                         color=excluded.color,
-                        mission=excluded.mission,
+                        mission1=excluded.mission1,
+                        mission2=excluded.mission2,
                         bodytype=excluded.bodytype,
                         repair=excluded.repair,
                         location=excluded.location,
+                        option=excluded.option,
+                        wd=excluded.wd,
+                        seat=excluded.seat,
+                        door=excluded.door,
+                        fuel=excluded.fuel,
+                        handle=excluded.handle,
+                        jc08=excluded.jc08,
                         source=excluded.source,
                         url=excluded.url,
                         raw_json=excluded.raw_json
