@@ -91,14 +91,15 @@ class Scrape:
         for car in all_cars:
             # name分割
             n = getattr(car, 'name', None)
-            if n and isinstance(n, str):
-                items = n.split(' ')
-                if len(items) >= 2:
-                    car.manufacturer = items[0]
-                    car.name = ' '.join(items[1:])
-                elif len(items) == 1:
-                    car.manufacturer = items[0]
-                    car.name = ''
+            items = n.split('\xa0')
+            print(items)
+            if len(items) >= 1:
+                car.manufacturer = items[0]
+                car.name = ' '.join(items[1:])
+            elif len(items) == 1:
+                car.manufacturer = items[0]
+                car.name = ''
+                
             # mission→mission2リネーム
             if hasattr(car, 'mission2') or hasattr(car, 'mission'):
                 mval = getattr(car, 'mission', None)
