@@ -1,5 +1,10 @@
 from __future__ import annotations
-"""Migrated from goo_net_scrape.parser (transitional)."""
+"""Migrated from goo_net_scrape.parser (transitional).
+
+NOTE: 現在デフォルトスクレイプ対象は CarSensor へ移行しました。
+このファイルは Goo-net 用ロジックを保持するレガシー実装です。
+完全移行後は削除 / 分離予定 (TODO)。
+"""
 from typing import Any, Dict, List, Optional
 from dataclasses import dataclass
 import re

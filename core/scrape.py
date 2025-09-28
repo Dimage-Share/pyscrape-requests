@@ -4,8 +4,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
-from .client import GooNetClient
-from .parser import parse_summary, parse_cars, get_next_page_url
+from .client import CarSensorClient
+from .carsensor_parser import parse_cars_carsensor, get_next_page_url_carsensor
 from .db import init_db, bulk_upsert_cars, truncate_goo, bulk_insert_goo
 from .logger import Logger
 
@@ -37,14 +37,12 @@ class Scrape:
         # Truncate goo table at start per requirement
         truncate_goo()
         pages_fetched = 0
-        with GooNetClient() as client:
-            first_params = dict(params)
-            first_params['page'] = 1
+        with CarSensorClient() as client:
+            # CarSensor初回ページ (paramsは現状未使用)
             t_page_start = time.perf_counter()
-            log.info(f"Page start page=1 params={first_params}")
-            html = client.get_summary_page(params=first_params or None)
-            parse_summary(html)
-            cars = parse_cars(html)
+            log.info("Page start page=1 (carsensor)")
+            html = client.get_summary_page(params=None)
+            cars = parse_cars_carsensor(html)
             if cars:
                 # Collect cars, insert later into goo
                 all_cars.extend(cars)
@@ -52,7 +50,7 @@ class Scrape:
             log.info(f"Page done page=1 records={len(cars)} total={len(all_cars)} {elapsed_ms:.1f}ms")
             pages_fetched = 1
             while pages_fetched < pages:
-                next_url = get_next_page_url(html)
+                next_url = get_next_page_url_carsensor(html, current_url='page1')
                 if not next_url:
                     log.debug(f"No next page (pages_fetched={pages_fetched})")
                     break
@@ -70,7 +68,7 @@ class Scrape:
                 except Exception as e:  # noqa: BLE001
                     log.warn(f"Page fetch fail page={target_page} error={e}")
                     break
-                cars = parse_cars(html)
+                cars = parse_cars_carsensor(html)
                 if cars:
                     all_cars.extend(cars)
                 else:
@@ -280,4 +278,5 @@ class Scrape:
             except Exception as e:  # noqa: BLE001
                 Logger.warn(f"summary remove fail error={e}")
         content = '# Summary\n' + '\n'.join(['````', *lines, '````', ''])
-        path.write_text(content, encoding='utf-8')
+        # Windowsメモ帳互換のため BOM 付きUTF-8で保存
+        path.write_text(content, encoding='utf-8-sig')
