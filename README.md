@@ -189,6 +189,47 @@ sqlite3 .\database.db ".mode markdown" ".headers on" "SELECT id,name,price,year,
 - [ ] レート制限・指数バックオフ・ランダムジッター
 - [ ] `source` サイズ肥大対策 (圧縮/外部テーブル分離オプション)
 
+## 文字化け (Mojibake) の修復について
+
+過去に UTF-8 文字列が ISO-8859-1 (latin-1) として誤ってデコードされた状態で DB (`goo` テーブル) に保存された場合、
+画面に `ãããããã¯` のような文字列が表示されることがあります。本リポジトリの現行クライアントは
+初回ページで明示的に `resp.encoding='utf-8'`、2ページ目以降も同様に強制する再発防止修正を入れています。
+
+既存データを修復するにはワンショットスクリプト `scripts/fix_encoding.py` を利用してください。
+
+### 手順
+1. Web UI / アプリを停止 (念のためアクセスを止める)
+2. ドライランで候補確認:
+  ```powershell
+  python scripts/fix_encoding.py --db database.db
+  ```
+3. 出力に問題ないことを確認後、適用:
+  ```powershell
+  python scripts/fix_encoding.py --db database.db --apply
+  ```
+4. Web UI を再度起動し表示を確認:
+  ```powershell
+  python web.py
+  ```
+
+### 検出ロジック概要
+- 対象カラム: name, mission, bodytype, repair, location
+- 元文字列に日本語 (漢字 / ひらがな / カタカナ) が含まれない
+- latin-1 で bytes 化 → UTF-8 再 decode した結果に日本語出現
+- 変換後文字列が空でない
+
+上記条件を満たす場合のみ修復候補とし、`--apply` 時に UPDATE します。変換不要な行はスキップされます。
+
+バックアップ推奨:
+```powershell
+Copy-Item database.db database.backup.db
+```
+
+### 変換の可逆性
+このパターンの mojibake は典型的な「UTF-8 バイト列を latin-1 で解釈しただけ」なので、
+`bad.encode('latin-1').decode('utf-8')` でほぼ完全に復元できます。元文字列が別原因 (多段破損等) の場合は
+検出ロジックで弾かれそのまま残ります。
+
 ## 法的・倫理的注意
 - `robots.txt` と 利用規約を必ず確認してください。
 - 高頻度アクセスや大量データ取得はサーバー負荷になるため避けてください。

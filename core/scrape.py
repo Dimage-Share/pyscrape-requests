@@ -64,6 +64,8 @@ class Scrape:
                 try:
                     resp = client.session.get(next_url, timeout=client.config.timeout)
                     resp.raise_for_status()
+                    # 念のため charset 明示 (ページ遷移後も UTF-8 だが推測誤りや一部環境差異防止)
+                    resp.encoding = 'utf-8'
                     html = resp.text
                 except Exception as e:  # noqa: BLE001
                     log.warn(f"Page fetch fail page={target_page} error={e}")
