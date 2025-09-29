@@ -7,8 +7,8 @@
 		:root { --sidebar-width: 260px; --gap:6px; --muted:#6b7280; --accent:#2563eb; --accent-2:#1e40af; --bg:#f5f7fb; --card:#ffffff; --border:#d0d6df; }
 		body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; margin:0; display:flex; flex-direction:column; background:var(--bg); color:#0f172a; }
 		header.page-header { width:100%; border-bottom:1px solid var(--border); padding:10px 16px; box-sizing:border-box; background: DODGERBLUE; }
-		/* header converted to grid: first column flexible, second column fixed 92px */
-		.header-grid { display:grid; grid-template-columns: 1fr repeat(8, 92px); grid-auto-rows: auto; gap:var(--gap); align-items:center; }
+	/* header converted to grid: first column flexible, remaining fixed 92px (now 11 controls) */
+	.header-grid { display:grid; grid-template-columns: 1fr repeat(11, 92px); grid-auto-rows: auto; gap:var(--gap); align-items:center; }
 		.header-label { color: rgba(255,255,255,0.95); background:transparent; font-size:.9rem; }
 		.header-control { display:flex; justify-content:flex-start; }
 		/* ensure controls are left-aligned and stacked to the left */
@@ -72,6 +72,9 @@
 				<div class="header-label" data-col="name">車名</div>
 				<div class="header-label" data-col="year">年式</div>
 				<div class="header-label" data-col="price">価格</div>
+				<div class="header-label" data-col="engine">排気量</div>
+				<div class="header-label" data-col="mission1">ミッション種別</div>
+				<div class="header-label" data-col="bodytype">ボディ</div>
 				<div class="header-label" data-col="category">軽/普通</div>
 				<div class="header-label" data-col="wd">駆動</div>
 				<div class="header-label" data-col="seat">席数</div>
@@ -86,6 +89,31 @@
 				<div class="header-control"><div id="ctrl-name"></div></div>
 				<div class="header-control"><div id="ctrl-year"></div></div>
 				<div class="header-control"><div id="ctrl-price"></div></div>
+                
+				<div class="header-control"><div id="ctrl-engine">
+					<select name="engine" class="hdr-ctrl" style="display:{{ 'inline-block' if request.args.get('engine') else 'none' }};">
+						<option value=""></option>
+						{% for e in engines %}
+							<option value="{{ e }}" {% if request.args.get('engine') == (e|string) %}selected{% endif %}>{{ e }}</option>
+						{% endfor %}
+					</select>
+				</div></div>
+				<div class="header-control"><div id="ctrl-mission1">
+					<select name="mission1" class="hdr-ctrl" style="display:{{ 'inline-block' if request.args.get('mission1') else 'none' }};">
+						<option value=""></option>
+						{% for m in mission1s %}
+							<option value="{{ m }}" {% if request.args.get('mission1') == m %}selected{% endif %}>{{ m }}</option>
+						{% endfor %}
+					</select>
+				</div></div>
+				<div class="header-control"><div id="ctrl-bodytype">
+					<select name="bodytype" class="hdr-ctrl" style="display:{{ 'inline-block' if request.args.get('bodytype') else 'none' }};">
+						<option value=""></option>
+						{% for b in bodytypes %}
+							<option value="{{ b }}" {% if request.args.get('bodytype') == b %}selected{% endif %}>{{ b }}</option>
+						{% endfor %}
+					</select>
+				</div></div>
 				<div class="header-control"><div id="ctrl-category"></div></div>
 				<div class="header-control"><div id="ctrl-wd"></div></div>
 				<div class="header-control"><div id="ctrl-seat"></div></div>
@@ -180,15 +208,11 @@
 			    });
 			  });
 
-			  // Auto submit filters
-			  const form = document.querySelector('aside form[action="/"]');
-			  if(form){
-			    const debounce = (fn, ms) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
-			    const submit = ()=>{ form.submit(); };
-			    const dsubmit = debounce(submit, 350);
-			    form.querySelectorAll('select').forEach(el => { el.addEventListener('change', submit); });
-				form.querySelectorAll('input[type=number]').forEach(el => { el.addEventListener('input', dsubmit); });
-			  }
+							// Auto submit header filters: use the header form and bind handlers to controls
+							const form = document.getElementById('global-search-form');
+							const debounce = (fn, ms) => { let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; };
+							const submit = ()=>{ if(form) form.submit(); };
+							const dsubmit = debounce(submit, 350);
 
 			  // header behavior: focus and Enter submits
 			  const gq = document.getElementById('global-q');
@@ -211,15 +235,37 @@
 								fuel: {{ fuels|tojson }},
 								handle: {{ handles|tojson }},
 							};
+							const INIT = {
+								manufacturer: {{ request.args.get('manufacturer','')|tojson }},
+								name: {{ request.args.get('name','')|tojson }},
+								year_min: {{ request.args.get('year_min','')|tojson }},
+								price_max: {{ request.args.get('price_max','')|tojson }},
+								category: {{ request.args.get('category','')|tojson }},
+								wd: {{ request.args.get('wd','')|tojson }},
+								seat: {{ request.args.get('seat','')|tojson }},
+								door: {{ request.args.get('door','')|tojson }},
+								engine: {{ request.args.get('engine','')|tojson }},
+								mission1: {{ request.args.get('mission1','')|tojson }},
+								bodytype: {{ request.args.get('bodytype','')|tojson }},
+							};
 
-											function insertControlById(id, node){
-												const wrap = document.getElementById(id);
-												if(!wrap) return;
-												wrap.innerHTML = '';
-												// hide by default; label click will focus and show
-												node.style.display = 'none';
-												wrap.appendChild(node);
-											}
+																						function insertControlById(id, node){
+																								const wrap = document.getElementById(id);
+																								if(!wrap) return;
+																								wrap.innerHTML = '';
+																								// hide by default; label click will focus and show
+																								node.style.display = 'none';
+																								wrap.appendChild(node);
+																								// attach auto-submit handlers depending on control type
+																								try{
+																									const tag = (node.tagName||'').toUpperCase();
+																									if(tag === 'SELECT'){
+																										node.addEventListener('change', submit);
+																									} else if(tag === 'INPUT' && node.type === 'number'){
+																										node.addEventListener('input', dsubmit);
+																									}
+																								}catch(e){ /* ignore */ }
+																						}
 
 							// manufacturer select
 							(function(){
@@ -227,6 +273,8 @@
 								const any = document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any);
 								(OPTIONS.manufacturer||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
 								insertControlById('ctrl-manufacturer', sel);
+								// initialize from query
+								if(INIT.manufacturer){ sel.value = INIT.manufacturer; sel.style.display = 'inline-block'; }
 							})();
 
 							// name select
@@ -235,25 +283,29 @@
 								const any = document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any);
 								(OPTIONS.name||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
 								insertControlById('ctrl-name', sel);
+								if(INIT.name){ sel.value = INIT.name; sel.style.display = 'inline-block'; }
 							})();
 
 							// year >= input
-							(function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='year_min'; inp.placeholder='年'; inp.classList.add('hdr-ctrl'); insertControlById('ctrl-year', inp); })();
+							(function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='year_min'; inp.placeholder='年'; inp.classList.add('hdr-ctrl'); insertControlById('ctrl-year', inp); if(INIT.year_min){ inp.value = INIT.year_min; inp.style.display='inline-block'; } })();
 
 							// price <= input
-							  (function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='price_max'; inp.placeholder='万'; inp.classList.add('hdr-ctrl'); insertControlById('ctrl-price', inp); })();
+							  (function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='price_max'; inp.placeholder='万'; inp.classList.add('hdr-ctrl'); insertControlById('ctrl-price', inp); if(INIT.price_max){ inp.value = INIT.price_max; inp.style.display='inline-block'; } })();
 
 							// category: 軽/普通
-							  (function(){ const sel=document.createElement('select'); sel.name='category'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); ['軽','普通'].forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-category', sel); })();
+							  (function(){ const sel=document.createElement('select'); sel.name='category'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); ['軽','普通'].forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-category', sel); if(INIT.category){ sel.value = INIT.category; sel.style.display='inline-block'; } })();
 
 							// wd
-							  (function(){ const sel=document.createElement('select'); sel.name='wd'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.wd||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-wd', sel); })();
+							  (function(){ const sel=document.createElement('select'); sel.name='wd'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.wd||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-wd', sel); if(INIT.wd){ sel.value = INIT.wd; sel.style.display='inline-block'; } })();
+
 
 							// seat
-							  (function(){ const sel=document.createElement('select'); sel.name='seat'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.seat||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-seat', sel); })();
+							  (function(){ const sel=document.createElement('select'); sel.name='seat'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.seat||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-seat', sel); if(INIT.seat){ sel.value = INIT.seat; sel.style.display='inline-block'; } })();
 
 							// door
-							  (function(){ const sel=document.createElement('select'); sel.name='door'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.door||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-door', sel); })();
+							  (function(){ const sel=document.createElement('select'); sel.name='door'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.door||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-door', sel); if(INIT.door){ sel.value = INIT.door; sel.style.display='inline-block'; } })();
+
+
 
 											// clicking labels toggles visibility and focuses the control
 											document.querySelectorAll('.header-label').forEach(lbl => {
@@ -272,6 +324,13 @@
 													} else {
 														child.style.display = 'none';
 													}
+												});
+											});
+											// ensure server-rendered hdr-ctrl elements also have auto-submit handlers
+											document.addEventListener('DOMContentLoaded', ()=>{
+												document.querySelectorAll('.hdr-ctrl').forEach(el=>{
+													if(el.tagName === 'SELECT') el.addEventListener('change', submit);
+													if(el.tagName === 'INPUT' && el.type === 'number') el.addEventListener('input', dsubmit);
 												});
 											});
 			})();

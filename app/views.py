@@ -25,6 +25,7 @@ def index():
     filters = {
         'manufacturer': request.args.get('manufacturer') or '',
         'name': request.args.get('name') or '',
+        'engine': request.args.get('engine') or '',
         'mission1': request.args.get('mission1') or '',
         'mission2': request.args.get('mission2') or '',
         'bodytype': request.args.get('bodytype') or '',
@@ -66,6 +67,13 @@ def index():
             where.append('(CAST(jc08 AS FLOAT) >= :jc08 OR jc08 IS NULL OR jc08 = "")')
         except Exception:
             flash('JC08は数値で入力してください', 'error')
+    # engine: 選択した値以上の排気量
+    if filters.get('engine'):
+        try:
+            params['engine'] = int(filters['engine'])
+            where.append('(engine >= :engine OR engine IS NULL OR engine = "")')
+        except Exception:
+            flash('排気量は整数で入力してください', 'error')
     # Sorting parameters (whitelist columns)
     allowed_sort_cols = ['price', 'year', 'rd', 'engine', 'manufacturer', 'name', 'mission1', 'mission2', 'bodytype', 'repair', 'location']
     sort = request.args.get('sort') or 'price'
@@ -162,6 +170,7 @@ def index():
             manufacturers = _vals('manufacturer')
             names = _vals('name')
             mission1s = _vals('mission1')
+            engines = _vals('engine')
             mission2s = _vals('mission2')
             repairs = _vals('repair')
             locations = _vals('location')
@@ -176,7 +185,7 @@ def index():
         conn.close()
     files = _list_summary_files()
     state = current_app.extensions.get('scrape_state') or {}
-    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, manufacturers=manufacturers, names=names, mission1s=mission1s, mission2s=mission2s, repairs=repairs, locations=locations, years=years, categories=categories, wds=wds, seats=seats, doors=doors, fuels=fuels, handles=handles, sort=sort, dir=dir_, state=state)
+    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, manufacturers=manufacturers, names=names, mission1s=mission1s, mission2s=mission2s, repairs=repairs, locations=locations, years=years, categories=categories, wds=wds, seats=seats, doors=doors, fuels=fuels, handles=handles, engines=engines, sort=sort, dir=dir_, state=state)
 
 
 @bp.route('/scrape', methods=['POST'])
