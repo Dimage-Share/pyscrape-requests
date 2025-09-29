@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .client import CarSensorClient
 from app.scrapers.carsensor.carsensor_parser import parse_cars_carsensor, get_next_page_url_carsensor, parse_car_detail
-from app.db import init_db, bulk_upsert_cars, truncate_goo, bulk_insert_goo
+from app.db import init_db, bulk_upsert_cars, truncate_goo, bulk_insert_goo, bulk_insert_listing
 from .logger import Logger
 
 
@@ -128,8 +128,9 @@ class Scrape:
             jc = getattr(car, 'jc08', None)
             if jc and isinstance(jc, str):
                 car.jc08 = jc.replace('（km/L）', '').replace('(km/L)', '').strip() or None
-        inserted = bulk_insert_goo(all_cars)
-        log.info(f"goo insert records={inserted}")
+        # write to unified `listing` table with site='carsensor'
+        inserted = bulk_insert_listing(all_cars, site='carsensor') if bulk_insert_listing else bulk_insert_goo(all_cars)
+        log.info(f"listing (carsensor) insert records={inserted}")
         # car テーブルにも同内容を upsert (分析/将来差分用途)
         try:
             from .db import bulk_upsert_cars

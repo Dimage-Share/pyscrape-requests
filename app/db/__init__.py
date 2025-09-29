@@ -15,6 +15,8 @@ truncate_goo = _mod.truncate_goo
 bulk_insert_goo = _mod.bulk_insert_goo
 upsert_car = _mod.upsert_car
 bulk_upsert_cars = _mod.bulk_upsert_cars
+# New unified listing API
+bulk_insert_listing = getattr(_mod, 'bulk_insert_listing', None)
 
 __all__ = [
     "get_connection",
@@ -23,4 +25,5 @@ __all__ = [
     "bulk_insert_goo",
     "upsert_car",
     "bulk_upsert_cars",
+    "bulk_insert_listing",
 ]

@@ -68,6 +68,35 @@ CREATE TABLE IF NOT EXISTS goo (
     created_at TEXT NOT NULL,
     raw_json TEXT
 );
+CREATE TABLE IF NOT EXISTS listing (
+    site TEXT NOT NULL,
+    id TEXT NOT NULL,
+    manufacturer TEXT,
+    name TEXT,
+    price INTEGER,
+    year INTEGER,
+    rd INTEGER,
+    engine INTEGER,
+    color TEXT,
+    mission1 TEXT,
+    mission2 TEXT,
+    bodytype TEXT,
+    repair TEXT,
+    location TEXT,
+    option TEXT,
+    wd TEXT,
+    seat TEXT,
+    door TEXT,
+    fuel TEXT,
+    handle TEXT,
+    jc08 TEXT,
+    category TEXT,
+    source TEXT,
+    url TEXT,
+    created_at TEXT,
+    raw_json TEXT,
+    PRIMARY KEY (site, id)
+);
 """
 
 
@@ -119,30 +148,38 @@ def truncate_goo(db_path: Optional[Path] = None) -> None:
 
 
 def bulk_insert_goo(records: Iterable[CarRecord], db_path: Optional[Path] = None) -> int:
+    # route goo writes to unified listing table with site='goo'
+    return bulk_insert_listing(records, db_path=db_path, site='goo')
+
+
+def bulk_insert_listing(records: Iterable[CarRecord], db_path: Optional[Path] = None, site: str = 'goo') -> int:
     conn = get_connection(db_path)
     try:
         params = []
         for rec in records:
             row = rec.to_db_row()
             row["created_at"] = datetime.now(timezone.utc).isoformat()
-            m = row.get("mission")
-            if isinstance(m, str) and m.strip() == "ミッション":
-                row["mission"] = None
-            b = row.get("bodytype")
-            if isinstance(b, str) and b.strip() == "ボディタイプ":
-                row["bodytype"] = None
-            params.append(row)
+            # normalize placeholder values
+            if isinstance(row.get('mission1'), str) and row.get('mission1').strip() == 'ミッション':
+                row['mission1'] = None
+            if isinstance(row.get('bodytype'), str) and row.get('bodytype').strip() == 'ボディタイプ':
+                row['bodytype'] = None
+            # ensure required keys
+            params.append({
+                **row, 'site': site
+            })
         with conn:
             if params:
                 chunk_size = 500
                 for i in range(0, len(params), chunk_size):
                     chunk = params[i:i + chunk_size]
+                    # build paramized SQL using named params
                     conn.executemany(
                         """
-                        INSERT OR REPLACE INTO goo (
-                            id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,source,url,created_at,raw_json
+                        INSERT OR REPLACE INTO listing (
+                            site,id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,category,source,url,created_at,raw_json
                         ) VALUES (
-                            :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:source,:url,:created_at,:raw_json
+                            :site,:id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:category,:source,:url,:created_at,:raw_json
                         );
                         """,
                         chunk,
