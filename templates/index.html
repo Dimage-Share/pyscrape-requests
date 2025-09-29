@@ -45,10 +45,10 @@
 	<header class="page-header">
 		<form id="global-search-form" method="get" action="/">
 			<div class="header-row">
-				<div class="header-col" style="flex:1;">
+				<div class="header-col" style="flex:0 0 auto;">
 					<label>検索</label>
 					<div class="control">
-						<input id="global-q" name="q" type="text" placeholder="全カラムを検索" value="{{ request.args.get('q','') }}" />
+						<input id="global-q" name="q" type="text" placeholder="全カラムを検索" value="{{ request.args.get('q','') }}" style="width:256px;" />
 					</div>
 				</div>
 				<div class="header-col" style="width:100px;">
@@ -63,9 +63,11 @@
 						<button id="add-filter" type="button" class="btn-secondary">+</button>
 					</div>
 				</div>
-			</div>
-			<div class="filter-cards" id="filter-cards">
-				<!-- dynamic filter cards will be inserted here -->
+				<div class="header-col" style="flex:1 1 auto;">
+					<div class="filter-cards" id="filter-cards" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+						<!-- dynamic filter cards will be inserted here -->
+					</div>
+				</div>
 			</div>
 		</form>
 	</header>
@@ -203,20 +205,72 @@
 			  const cardArea = document.getElementById('filter-cards');
 			  const addBtn = document.getElementById('add-filter');
 			  const presets = document.querySelectorAll('button[data-col]');
+			  // Build option lists from server-provided variables
+			  const OPTIONS = {
+			    manufacturer: {{ manufacturers|tojson }},
+			    name: {{ names|tojson }},
+			    mission1: {{ mission1s|tojson }},
+			    mission2: {{ mission2s|tojson }},
+			    bodytype: {{ bodytypes|tojson }},
+			    repair: {{ repairs|tojson }},
+			    location: {{ locations|tojson }},
+			    year: {{ years|tojson }},
+			    category: {{ categories|tojson }},
+			    wd: {{ wds|tojson }},
+			    seat: {{ seats|tojson }},
+			    door: {{ doors|tojson }},
+			    fuel: {{ fuels|tojson }},
+			    handle: {{ handles|tojson }},
+			  };
+			  const LABELS = {
+			    manufacturer: 'メーカー', name: '車名', mission1: 'ミッション種別', mission2: 'ミッション詳細', bodytype: 'ボディ', repair: '修復歴', location: '所在地', year: '年式', category: '区分', wd: '駆動', seat: '席数', door: 'ドア', fuel: '燃料', handle: 'ハンドル', jc08: 'JC08', price: '価格'
+			  };
+			  function makeControlFor(col, value){
+			    // If we have options for this column, build a select
+			    if(col === 'price'){
+			      const wrap = document.createElement('div');
+			      const min = document.createElement('input'); min.type='number'; min.name='price_min'; min.placeholder='最小'; if(value && value.min) min.value=value.min;
+			      const max = document.createElement('input'); max.type='number'; max.name='price_max'; max.placeholder='最大'; if(value && value.max) max.value=value.max;
+			      min.style.width='80px'; max.style.width='80px'; min.style.marginRight='6px';
+			      wrap.appendChild(min); wrap.appendChild(max);
+			      return wrap;
+			    }
+			    const opts = OPTIONS[col];
+			    if(opts && opts.length){
+			      const sel = document.createElement('select'); sel.name = col;
+			      const any = document.createElement('option'); any.value=''; any.textContent='(any)'; sel.appendChild(any);
+			      opts.forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; if(value==o) opt.selected=true; sel.appendChild(opt); });
+			      return sel;
+			    }
+			    // default: text input
+			    const inp = document.createElement('input'); inp.type='text'; inp.name = col; inp.value = value || '';
+			    return inp;
+			  }
 			  function makeCard(col, value){
-			    const card = document.createElement('div'); card.className='card';
+			    const card = document.createElement('div'); card.className='card'; card.style.display='flex'; card.style.flexDirection='column'; card.style.minWidth='160px';
 			    const close = document.createElement('span'); close.className='close'; close.textContent='×'; close.onclick = ()=>card.remove();
-			    const label = document.createElement('div'); label.textContent = col; label.style.fontSize='.85rem';
-			    const input = document.createElement('input'); input.name = col; input.className='control'; input.value = value || '';
-			    card.appendChild(close); card.appendChild(label); card.appendChild(input);
+			    const top = document.createElement('div'); top.style.display='flex'; top.style.gap='6px'; top.style.alignItems='center';
+			    const fld = document.createElement('select'); fld.style.flex='1';
+			    // populate field select with LABELS
+			    Object.keys(LABELS).forEach(k=>{ const o=document.createElement('option'); o.value=k; o.textContent=LABELS[k]; if(k===col) o.selected=true; fld.appendChild(o); });
+			    const control = makeControlFor(col, value);
+			    fld.addEventListener('change', ()=>{
+			      const newCol = fld.value;
+			      const newControl = makeControlFor(newCol);
+			      // replace control
+			      if(control.parentNode) control.parentNode.replaceChild(newControl, control);
+			    });
+			    top.appendChild(fld);
+			    top.appendChild(close);
+			    card.appendChild(top);
+			    card.appendChild(control);
 			    return card;
 			  }
 			  addBtn.addEventListener('click', ()=>{
-			    // show a simple select to pick column
-			    const sel = document.createElement('select');
-			    ['manufacturer','name','year','price','category','wd','seat','door','fuel','handle'].forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=c; sel.appendChild(o); });
-			    const ok = document.createElement('button'); ok.textContent='OK'; ok.type='button';
-			    const wrapper = document.createElement('div'); wrapper.className='card'; wrapper.appendChild(sel); wrapper.appendChild(ok);
+			    // temporary modal-less select insertion
+			    const sel = document.createElement('select'); ['manufacturer','name','year','price','category','wd','seat','door','fuel','handle','jc08','mission1','mission2','bodytype','repair','location'].forEach(c=>{ const o=document.createElement('option'); o.value=c; o.textContent=LABELS[c]||c; sel.appendChild(o); });
+			    const ok = document.createElement('button'); ok.textContent='OK'; ok.type='button'; ok.className='btn-secondary';
+			    const wrapper = document.createElement('div'); wrapper.className='card'; wrapper.style.display='flex'; wrapper.style.flexDirection='row'; wrapper.style.alignItems='center'; wrapper.style.gap='6px'; wrapper.appendChild(sel); wrapper.appendChild(ok);
 			    cardArea.appendChild(wrapper);
 			    ok.addEventListener('click', ()=>{ const col = sel.value; wrapper.remove(); cardArea.appendChild(makeCard(col)); });
 			  });
