@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
 from .client import CarSensorClient
-from .carsensor_parser import parse_cars_carsensor, get_next_page_url_carsensor, parse_car_detail
+from app.scrapers.carsensor.carsensor_parser import parse_cars_carsensor, get_next_page_url_carsensor, parse_car_detail
 from app.db import init_db, bulk_upsert_cars, truncate_goo, bulk_insert_goo
 from .logger import Logger
 
