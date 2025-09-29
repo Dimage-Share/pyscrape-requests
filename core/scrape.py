@@ -99,6 +99,16 @@ class Scrape:
             elif len(items) == 1:
                 car.manufacturer = items[0]
                 car.name = ''
+            # engine→category自動判定
+            try:
+                eng = getattr(car, 'engine', None)
+                if eng is not None:
+                    eng_val = int(eng)
+                    car.category = '軽' if eng_val <= 660 else '普通'
+                else:
+                    car.category = None
+            except Exception:
+                car.category = None
                 
             # mission→mission2リネーム
             if hasattr(car, 'mission2') or hasattr(car, 'mission'):

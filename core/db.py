@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS car (
     fuel TEXT,
     handle TEXT,
     jc08 TEXT,
+    category TEXT,
     source TEXT,
     url TEXT,
     created_at TEXT NOT NULL,
@@ -105,13 +106,13 @@ def init_db(db_path: Optional[Path] = None) -> None:
     try:
         with conn:
             conn.executescript(SCHEMA_SQL)
-            for col in ("manufacturer", "price", "rd", "engine", "color", "mission1", "mission2", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08"):
+            for col in ("manufacturer", "price", "rd", "engine", "color", "mission1", "mission2", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08", "category"):
                 try:
                     conn.execute(f"ALTER TABLE car ADD COLUMN {col} TEXT")
                 except Exception:
                     pass
             # ensure goo table columns exist (same as car)
-            for col in ("manufacturer", "price", "rd", "engine", "color", "mission1", "mission2", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08"):
+            for col in ("manufacturer", "price", "rd", "engine", "color", "mission1", "mission2", "bodytype", "repair", "source", "url", "option", "wd", "seat", "door", "fuel", "handle", "jc08", "category"):
                 try:
                     conn.execute(f"ALTER TABLE goo ADD COLUMN {col} TEXT")
                 except Exception:
@@ -173,9 +174,9 @@ def upsert_car(record: CarRecord, db_path: Optional[Path] = None) -> None:
             conn.execute(
                 """
                 INSERT INTO car (
-                    id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,source,url,created_at,raw_json
+                    id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,category,source,url,created_at,raw_json
                 ) VALUES (
-                    :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:source,:url,:created_at,:raw_json
+                    :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:category,:source,:url,:created_at,:raw_json
                 )
                 ON CONFLICT(id) DO UPDATE SET
                     manufacturer=excluded.manufacturer,
@@ -197,6 +198,7 @@ def upsert_car(record: CarRecord, db_path: Optional[Path] = None) -> None:
                     fuel=excluded.fuel,
                     handle=excluded.handle,
                     jc08=excluded.jc08,
+                    category=excluded.category,
                     source=excluded.source,
                     url=excluded.url,
                     raw_json=excluded.raw_json
@@ -219,9 +221,9 @@ def bulk_upsert_cars(records: Iterable[CarRecord], db_path: Optional[Path] = Non
                 conn.execute(
                     """
                     INSERT INTO car (
-                        id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,source,url,created_at,raw_json
+                        id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,category,source,url,created_at,raw_json
                     ) VALUES (
-                        :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:source,:url,:created_at,:raw_json
+                        :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:category,:source,:url,:created_at,:raw_json
                     )
                     ON CONFLICT(id) DO UPDATE SET
                         manufacturer=excluded.manufacturer,
@@ -243,6 +245,7 @@ def bulk_upsert_cars(records: Iterable[CarRecord], db_path: Optional[Path] = Non
                         fuel=excluded.fuel,
                         handle=excluded.handle,
                         jc08=excluded.jc08,
+                        category=excluded.category,
                         source=excluded.source,
                         url=excluded.url,
                         raw_json=excluded.raw_json

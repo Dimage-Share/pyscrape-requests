@@ -19,18 +19,56 @@ def _list_summary_files():
 
 @bp.route('/')
 def index():
+    # Build SQL dynamically
+    where = []
+    params = {}
     # Collect filter parameters from query string
     filters = {
+        'manufacturer': request.args.get('manufacturer') or '',
+        'name': request.args.get('name') or '',
+        'mission1': request.args.get('mission1') or '',
+        'mission2': request.args.get('mission2') or '',
         'bodytype': request.args.get('bodytype') or '',
-        'mission': request.args.get('mission') or '',
         'repair': request.args.get('repair') or '',
         'location': request.args.get('location') or '',
         'year': request.args.get('year') or '',
         'price_max': request.args.get('price_max') or '',
-        'price_min': request.args.get('price_min') or ''
+        'price_min': request.args.get('price_min') or '',
+        'category': request.args.get('category') or '',
+        'wd': request.args.get('wd') or '',
+        'seat': request.args.get('seat') or '',
+        'door': request.args.get('door') or '',
+        'fuel': request.args.get('fuel') or '',
+        'handle': request.args.get('handle') or '',
+        'jc08': request.args.get('jc08') or ''
     }
+    print("[DEBUG] filters['door']:", repr(filters['door']))
+    print("[DEBUG] filters['door']:", repr(filters['door']))
+    # wd, seat, fuel, handle: 部分一致 or null
+    if filters['wd']:
+        where.append('(wd LIKE :wd OR wd IS NULL OR wd = "")')
+        params['wd'] = f"%{filters['wd']}%"
+    if filters['seat']:
+        where.append('seat = :seat')
+        params['seat'] = filters['seat']
+    if filters['door'] != '':
+        where.append('door = :door')
+        params['door'] = filters['door']
+    if filters['fuel']:
+        where.append('(fuel LIKE :fuel OR fuel IS NULL OR fuel = "")')
+        params['fuel'] = f"%{filters['fuel']}%"
+    if filters['handle']:
+        where.append('(handle LIKE :handle OR handle IS NULL OR handle = "")')
+        params['handle'] = f"%{filters['handle']}%"
+    # jc08: 入力値以上またはnull
+    if filters['jc08']:
+        try:
+            params['jc08'] = float(filters['jc08'])
+            where.append('(CAST(jc08 AS FLOAT) >= :jc08 OR jc08 IS NULL OR jc08 = "")')
+        except Exception:
+            flash('JC08は数値で入力してください', 'error')
     # Sorting parameters (whitelist columns)
-    allowed_sort_cols = ['price', 'year', 'rd', 'engine', 'name', 'mission', 'bodytype', 'repair', 'location']
+    allowed_sort_cols = ['price', 'year', 'rd', 'engine', 'manufacturer', 'name', 'mission1', 'mission2', 'bodytype', 'repair', 'location']
     sort = request.args.get('sort') or 'price'
     if sort not in allowed_sort_cols:
         sort = 'price'
@@ -47,24 +85,39 @@ def index():
     # Build SQL dynamically
     where = []
     params = {}
+    if filters['manufacturer']:
+        where.append('manufacturer = :manufacturer')
+        params['manufacturer'] = filters['manufacturer']
+    if filters['name']:
+        where.append('name = :name')
+        params['name'] = filters['name']
+    if filters['mission1']:
+        where.append('mission1 = :mission1')
+        params['mission1'] = filters['mission1']
+    if filters['mission2']:
+        where.append('mission2 = :mission2')
+        params['mission2'] = filters['mission2']
+    if filters['category']:
+        where.append('category = :category')
+        params['category'] = filters['category']
     if filters['bodytype']:
         where.append('bodytype = :bodytype')
         params['bodytype'] = filters['bodytype']
-    if filters['mission']:
-        where.append('mission = :mission')
-        params['mission'] = filters['mission']
     if filters['repair']:
         where.append('repair = :repair')
         params['repair'] = filters['repair']
     if filters['location']:
         where.append('location = :location')
         params['location'] = filters['location']
+    if filters['door']:
+        where.append('door = :door')
+        params['door'] = filters['door']
     if filters['year']:
         try:
             params['year'] = int(filters['year'])
-            where.append('year = :year')
+            where.append('(year >= :year OR year IS NULL)')
         except Exception:
-            flash('yearは整数', 'error')
+            flash('年式は整数で入力してください', 'error')
     if filters['price_min']:
         try:
             params['price_min'] = int(filters['price_min'])
@@ -77,10 +130,12 @@ def index():
             where.append('price <= :price_max')
         except Exception:
             flash('price_maxは整数', 'error')
-    sql = 'SELECT id,name,price,year,rd,engine,mission,bodytype,repair,location,url FROM goo'
+    sql = 'SELECT id,manufacturer,name,price,year,rd,engine,mission1,mission2,bodytype,repair,location,wd,seat,door,fuel,handle,jc08,option,category,url FROM car'
     if where:
         sql += ' WHERE ' + ' AND '.join(where)
     sql += f' ORDER BY {sort} {dir_.upper()}{secondary_order} LIMIT 300'
+    print("[SQL QUERY]", sql)
+    print("[SQL PARAMS]", params)
     # Fetch distinct values for dropdowns
     import sqlite3
     from core.db import get_connection
@@ -95,15 +150,24 @@ def index():
                 return [v[0] for v in c2]
             
             bodytypes = _vals('bodytype')
-            missions = _vals('mission')
+            manufacturers = _vals('manufacturer')
+            names = _vals('name')
+            mission1s = _vals('mission1')
+            mission2s = _vals('mission2')
             repairs = _vals('repair')
             locations = _vals('location')
             years = [r[0] for r in conn.execute('SELECT DISTINCT year FROM goo WHERE year IS NOT NULL ORDER BY year DESC LIMIT 50').fetchall()]
+            categories = _vals('category')
+            wds = _vals('wd')
+            seats = _vals('seat')
+            doors = _vals('door')
+            fuels = _vals('fuel')
+            handles = _vals('handle')
     finally:
         conn.close()
     files = _list_summary_files()
     state = current_app.extensions.get('scrape_state') or {}
-    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, missions=missions, repairs=repairs, locations=locations, years=years, sort=sort, dir=dir_, state=state)
+    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, manufacturers=manufacturers, names=names, mission1s=mission1s, mission2s=mission2s, repairs=repairs, locations=locations, years=years, categories=categories, wds=wds, seats=seats, doors=doors, fuels=fuels, handles=handles, sort=sort, dir=dir_, state=state)
 
 
 @bp.route('/scrape', methods=['POST'])

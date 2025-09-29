@@ -38,15 +38,30 @@
 			<input type="hidden" name="dir" value="{{ dir }}" />
 			<fieldset>
 				<legend>基本</legend>
+				<label>メーカー</label>
+				<select name="manufacturer">
+					<option value="">(any)</option>
+					{% for v in manufacturers %}<option value="{{ v }}" {% if filters.manufacturer==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				   <label>車名</label>
+				   <select name="name">
+					   <option value="">(any)</option>
+					   {% for v in names %}<option value="{{ v }}" {% if filters.name==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				   </select>
+				<label>ミッション種別</label>
+				<select name="mission1">
+					<option value="">(any)</option>
+					{% for v in mission1s %}<option value="{{ v }}" {% if filters.mission1==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>ミッション詳細</label>
+				<select name="mission2">
+					<option value="">(any)</option>
+					{% for v in mission2s %}<option value="{{ v }}" {% if filters.mission2==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
 				<label>ボディタイプ</label>
 				<select name="bodytype">
 					<option value="">(any)</option>
 					{% for v in bodytypes %}<option value="{{ v }}" {% if filters.bodytype==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
-				</select>
-				<label>ミッション</label>
-				<select name="mission">
-					<option value="">(any)</option>
-					{% for v in missions %}<option value="{{ v }}" {% if filters.mission==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
 				</select>
 				<label>修復歴</label>
 				<select name="repair">
@@ -63,6 +78,39 @@
 					<option value="">(any)</option>
 					{% for v in years %}<option value="{{ v }}" {% if filters.year|int == v %}selected{% endif %}>{{ v }}</option>{% endfor %}
 				</select>
+				<label>区分</label>
+				<select name="category">
+					<option value="">(any)</option>
+					<option value="軽" {% if filters.category=='軽' %}selected{% endif %}>軽</option>
+					<option value="普通" {% if filters.category=='普通' %}selected{% endif %}>普通</option>
+				</select>
+				<label>駆動</label>
+				<select name="wd">
+					<option value="">(any)</option>
+					{% for v in wds %}<option value="{{ v }}" {% if filters.wd==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>席数</label>
+				<select name="seat">
+					<option value="">(any)</option>
+					{% for v in seats %}<option value="{{ v }}" {% if filters.seat==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>ドア</label>
+				<select name="door">
+					<option value="">(any)</option>
+					{% for v in doors %}<option value="{{ v }}" {% if filters.door==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>燃料</label>
+				<select name="fuel">
+					<option value="">(any)</option>
+					{% for v in fuels %}<option value="{{ v }}" {% if filters.fuel==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>ハンドル</label>
+				<select name="handle">
+					<option value="">(any)</option>
+					{% for v in handles %}<option value="{{ v }}" {% if filters.handle==v %}selected{% endif %}>{{ v }}</option>{% endfor %}
+				</select>
+				<label>JC08</label>
+				<input type="text" name="jc08" value="{{ filters.jc08 or '' }}" placeholder="例: 20" />
 			</fieldset>
 			<fieldset>
 				<legend>価格(万円)</legend>
@@ -119,26 +167,44 @@
 						<th data-col="url" class="no-sort">リンク</th>
 						<th data-col="price" class="sortable num">価格(万)</th>
 						<th data-col="year" class="sortable num">年式</th>
-						<th data-col="name" class="sortable">名前</th>
+						<th data-col="manufacturer" class="sortable">メーカー</th>
+						<th data-col="name" class="sortable">車名</th>
 						<th data-col="rd" class="sortable num">走行距離</th>
 						<th data-col="engine" class="sortable num">排気量</th>
-						<th data-col="mission" class="sortable">ミッション</th>
+						<th data-col="mission1" class="sortable">ミッション種別</th>
+						<th data-col="mission2" class="sortable">ミッション詳細</th>
 						<th data-col="bodytype" class="sortable">ボディ</th>
+						<th data-col="category" class="sortable">区分</th>
+						<th data-col="wd" class="sortable">駆動</th>
+						<th data-col="seat" class="sortable">席数</th>
+						<th data-col="door" class="sortable">ドア</th>
+						<th data-col="fuel" class="sortable">燃料</th>
+						<th data-col="handle" class="sortable">ハンドル</th>
+						<th data-col="jc08" class="sortable">JC08</th>
 						<th data-col="location" class="sortable">所在地</th>
 						<th data-col="repair" class="sortable">修復</th>
 					</tr>
 				</thead>
 				<tbody>
 				{% for r in rows %}
-					<tr>
+					<tr{% if loop.index0 % 2 == 1 %} style="background:#e3f0fb;"{% endif %}>
 						<td>{% if r.url %}<a href="{{ r.url }}" target="_blank" rel="noopener">open</a>{% endif %}</td>
 						<td class="num">{% if r.price is not none %}{{ '{:,}'.format(r.price) }}万{% endif %}</td>
 						<td class="num">{% if r.year is not none %}{{ r.year }}年式{% endif %}</td>
-						<td>{{ r.name }}</td>
+						<td>{{ r.manufacturer or '' }}</td>
+						<td>{{ r.name or '' }}</td>
 						<td class="num">{% if r.rd is not none %}{{ '{:,}'.format(r.rd) }}km{% endif %}</td>
 						<td class="num">{% if r.engine is not none %}{{ '{:,}'.format(r.engine) }}cc{% endif %}</td>
-						<td>{% if r.mission and r.mission != 'ミッション' %}{{ r.mission }}{% endif %}</td>
+						<td>{{ r.mission1 or '' }}</td>
+						<td>{{ r.mission2 or '' }}</td>
 						<td>{% if r.bodytype and r.bodytype != 'ボディタイプ' %}{{ r.bodytype }}{% endif %}</td>
+						<td>{{ r.category or '' }}</td>
+						<td>{{ r.wd or '' }}</td>
+						<td>{{ r.seat or '' }}</td>
+						<td>{{ r.door or '' }}</td>
+						<td>{{ r.fuel or '' }}</td>
+						<td>{{ r.handle or '' }}</td>
+						<td>{{ r.jc08 or '' }}</td>
 						<td>{{ r.location or '' }}</td>
 						<td>{{ r.repair or '' }}</td>
 					</tr>
@@ -176,7 +242,7 @@
 		    const submit = ()=>{ form.submit(); };
 		    const dsubmit = debounce(submit, 350);
 		    form.querySelectorAll('select').forEach(el => { el.addEventListener('change', submit); });
-		    form.querySelectorAll('input[type=number], input[type=text]').forEach(el => { el.addEventListener('input', dsubmit); });
+			form.querySelectorAll('input[type=number]').forEach(el => { el.addEventListener('input', dsubmit); });
 		  }
 		})();
 		</script>

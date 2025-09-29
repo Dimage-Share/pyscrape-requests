@@ -30,6 +30,7 @@ class CarRecord:
     fuel: Optional[str] = None
     handle: Optional[str] = None
     jc08: Optional[str] = None
+    category: Optional[str] = None  # engine<=660: "軽"、それ以外: "普通"
     
     def to_db_row(self) -> Dict[str, Any]:
         d = asdict(self)
