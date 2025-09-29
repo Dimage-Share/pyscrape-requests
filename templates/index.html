@@ -99,7 +99,7 @@
 				</div></div>
                 
 				<div class="header-control"><div id="ctrl-engine">
-					<select name="engine" class="hdr-ctrl" style="display:{{ 'inline-block' if request.args.get('engine') else 'none' }};">
+					<select name="engine" class="hdr-ctrl">
 						<option value=""></option>
 						{% for e in engines %}
 							<option value="{{ e }}" {% if request.args.get('engine') == (e|string) %}selected{% endif %}>{{ e }}</option>
@@ -107,7 +107,7 @@
 					</select>
 				</div></div>
 				<div class="header-control"><div id="ctrl-mission1">
-					<select name="mission1" class="hdr-ctrl" style="display:{{ 'inline-block' if request.args.get('mission1') else 'none' }};">
+					<select name="mission1" class="hdr-ctrl">
 						<option value=""></option>
 						{% for m in mission1s %}
 							<option value="{{ m }}" {% if request.args.get('mission1') == m %}selected{% endif %}>{{ m }}</option>
@@ -115,7 +115,7 @@
 					</select>
 				</div></div>
 				<div class="header-control"><div id="ctrl-bodytype">
-					<select name="bodytype" class="hdr-ctrl" style="display:{{ 'inline-block' if request.args.get('bodytype') else 'none' }};">
+					<select name="bodytype" class="hdr-ctrl">
 						<option value=""></option>
 						{% for b in bodytypes %}
 							<option value="{{ b }}" {% if request.args.get('bodytype') == b %}selected{% endif %}>{{ b }}</option>
@@ -196,6 +196,37 @@
 					</tbody>
 				</table>
 			</div>
+			</div>
+			<!-- server-provided JSON blobs to avoid Jinja-inline-JS parsing issues -->
+			<script id="opts-json" type="application/json">{{ {
+				'manufacturer': manufacturers,
+				'name': names,
+				'mission1': mission1s,
+				'mission2': mission2s,
+				'bodytype': bodytypes,
+				'repair': repairs,
+				'location': locations,
+				'year': years,
+				'category': categories,
+				'wd': wds,
+				'seat': seats,
+				'door': doors,
+				'fuel': fuels,
+				'handle': handles
+			}|tojson }}</script>
+			<script id="init-json" type="application/json">{{ {
+				'manufacturer': request.args.get('manufacturer',''),
+				'name': request.args.get('name',''),
+				'year_min': request.args.get('year_min',''),
+				'price_max': request.args.get('price_max',''),
+				'category': request.args.get('category',''),
+				'wd': request.args.get('wd',''),
+				'seat': request.args.get('seat',''),
+				'door': request.args.get('door',''),
+				'engine': request.args.get('engine',''),
+				'mission1': request.args.get('mission1',''),
+				'bodytype': request.args.get('bodytype','')
+			}|tojson }}</script>
 			<script>
 			(function(){
 			  const params = new URLSearchParams(window.location.search);
@@ -226,36 +257,9 @@
 			  const gq = document.getElementById('global-q');
 			  if(gq){ gq.focus(); gq.addEventListener('keydown', (e)=>{ if(e.key === 'Enter'){ e.preventDefault(); document.getElementById('global-search-form').submit(); } }); }
 
-							  // dynamic header controls: populate ctrl-... placeholders
-							const OPTIONS = {
-								manufacturer: {{ manufacturers|tojson }},
-								name: {{ names|tojson }},
-								mission1: {{ mission1s|tojson }},
-								mission2: {{ mission2s|tojson }},
-								bodytype: {{ bodytypes|tojson }},
-								repair: {{ repairs|tojson }},
-								location: {{ locations|tojson }},
-								year: {{ years|tojson }},
-								category: {{ categories|tojson }},
-								wd: {{ wds|tojson }},
-								seat: {{ seats|tojson }},
-								door: {{ doors|tojson }},
-								fuel: {{ fuels|tojson }},
-								handle: {{ handles|tojson }},
-							};
-							const INIT = {
-								manufacturer: {{ request.args.get('manufacturer','')|tojson }},
-								name: {{ request.args.get('name','')|tojson }},
-								year_min: {{ request.args.get('year_min','')|tojson }},
-								price_max: {{ request.args.get('price_max','')|tojson }},
-								category: {{ request.args.get('category','')|tojson }},
-								wd: {{ request.args.get('wd','')|tojson }},
-								seat: {{ request.args.get('seat','')|tojson }},
-								door: {{ request.args.get('door','')|tojson }},
-								engine: {{ request.args.get('engine','')|tojson }},
-								mission1: {{ request.args.get('mission1','')|tojson }},
-								bodytype: {{ request.args.get('bodytype','')|tojson }},
-							};
+							// dynamic header controls: populate ctrl-... placeholders
+							const OPTIONS = JSON.parse(document.getElementById('opts-json').textContent || '{}');
+							const INIT = JSON.parse(document.getElementById('init-json').textContent || '{}');
 
 																						function insertControlById(id, node){
 																								const wrap = document.getElementById(id);
@@ -300,10 +304,10 @@
 
 
 							// category: 軽/普通
-							  (function(){ const sel=document.createElement('select'); sel.name='category'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); ['軽','普通'].forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-category', sel); if(INIT.category){ sel.value = INIT.category; sel.style.display='inline-block'; } })();
+							(function(){ const sel=document.createElement('select'); sel.name='category'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); ['軽','普通'].forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-category', sel); if(INIT.category){ sel.value = INIT.category; sel.style.display='inline-block'; } })();
 
 							// wd
-							  (function(){ const sel=document.createElement('select'); sel.name='wd'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.wd||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-wd', sel); if(INIT.wd){ sel.value = INIT.wd; sel.style.display='inline-block'; } })();
+							(function(){ const sel=document.createElement('select'); sel.name='wd'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.wd||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-wd', sel); if(INIT.wd){ sel.value = INIT.wd; sel.style.display='inline-block'; } })();
 
 
 							// seat
