@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ja">
+	<head>
+		<meta charset="UTF-8" />
+		<title>ピボットテーブル解析</title>
+		<style>
+			body {
+				font-family: system-ui, sans-serif;
+				margin: 0;
+				padding: 0;
+			}
+			header {
+				display: flex;
+				justify-content: space-between;
+				align-items: center;
+				background: #f7f7f9;
+				border-bottom: 1px solid #ddd;
+				padding: 12px 20px;
+			}
+			main {
+				padding: 20px;
+			}
+			.controls {
+				display: flex;
+				gap: 16px;
+				margin-bottom: 16px;
+			}
+			label {
+				font-size: 0.9rem;
+				margin-right: 6px;
+			}
+			select,
+			input[type="text"] {
+				padding: 4px;
+				font-size: 0.95rem;
+			}
+			table {
+				border-collapse: collapse;
+				width: 100%;
+				margin-top: 20px;
+				font-size: 0.85rem;
+			}
+			th,
+			td {
+				border: 1px solid #ccc;
+				padding: 6px 10px;
+				text-align: center;
+			}
+			th {
+				background: #fafafa;
+			}
+			.color-cell {
+				color: #fff;
+				font-weight: bold;
+			}
+		</style>
+	</head>
+	<body>
+		<header>
+			<h1>ピボットテーブル解析</h1>
+			<a
+				href="/"
+				style="font-size: 0.9rem"
+				>← 戻る</a
+			>
+		</header>
+		<main>
+			<form
+				id="pivot-form"
+				method="get"
+			>
+				<div class="controls">
+					<div>
+						<label>横軸:</label>
+						<select
+							name="col"
+							id="col-select"
+						></select>
+					</div>
+					<div>
+						<label>縦軸:</label>
+						<select
+							name="row"
+							id="row-select"
+						></select>
+					</div>
+					<div>
+						<label>値:</label>
+						<select
+							name="val"
+							id="val-select"
+						></select>
+					</div>
+					<div>
+						<label>集計:</label>
+						<select
+							name="agg"
+							id="agg-select"
+						>
+							<option value="count">件数</option>
+							<option value="sum">合計</option>
+							<option value="avg">平均</option>
+						</select>
+					</div>
+				</div>
+				<div
+					class="controls"
+					id="filter-controls"
+				>
+					<!-- 動的フィルタ挿入 -->
+				</div>
+				<button type="submit">集計</button>
+			</form>
+			<div id="pivot-table-area">
+				<!-- ピボットテーブル描画領域 -->
+			</div>
+		</main>
+		<script>
+			// カラム一覧をAPIから取得
+			fetch("/pivot/columns")
+				.then((r) => r.json())
+				.then((cols) => {
+					for (const id of ["col-select", "row-select", "val-select"]) {
+						const sel = document.getElementById(id);
+						cols.forEach((c) => {
+							const opt = document.createElement("option");
+							opt.value = c;
+							opt.textContent = c;
+							sel.appendChild(opt);
+						});
+					}
+					// フィルタも生成
+					const filterDiv = document.getElementById("filter-controls");
+					cols.forEach((c) => {
+						const label = document.createElement("label");
+						label.textContent = c;
+						const input = document.createElement("input");
+						input.type = "text";
+						input.name = "filter_" + c;
+						filterDiv.appendChild(label);
+						filterDiv.appendChild(input);
+					});
+				});
+			// ピボットテーブル描画（サーバー集計結果を受信して描画）
+			if (location.search) {
+				fetch("/pivot/data" + location.search)
+					.then((r) => r.json())
+					.then((data) => {
+						const area = document.getElementById("pivot-table-area");
+						if (!data.table) {
+							area.textContent = "データなし";
+							return;
+						}
+						// 色相環でセル色決定
+						function color(val, max) {
+							if (val === 0) return "#fff"; // Zero values get a white background
+							if (max == 0) return "#eee";
+							const h = 240 - Math.round((240 * val) / max);
+							return `hsl(${h},70%,55%)`;
+						}
+						let html = "<table><tr><th></th>";
+						data.cols.forEach((c) => {
+							html += `<th>${c}</th>`;
+						});
+						html += "</tr>";
+						data.rows.forEach((r, i) => {
+							html += `<tr><th>${r}</th>`;
+							data.table[i].forEach((v, j) => {
+								const bg = color(v, data.max);
+								html += `<td class="color-cell" style="background:${bg}">${v}</td>`;
+							});
+							html += "</tr>";
+						});
+						html += "</table>";
+						area.innerHTML = html;
+					});
+			}
+		</script>
+	</body>
+</html>

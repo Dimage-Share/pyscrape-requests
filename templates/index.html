@@ -153,7 +153,10 @@
 		</div>
 	</aside>
 	<main>
-		<h1>検索結果</h1>
+		<div style="display:flex; justify-content:space-between; align-items:center;">
+			<h1>検索結果</h1>
+			<a href="/pivot" class="btn-link btn-secondary" style="margin-left:auto;">pivot</a>
+		</div>
 		{% with messages = get_flashed_messages(with_categories=true) %}
 			{% if messages %}
 				{% for cat, msg in messages %}<div class="flash {{ cat }}">{{ msg }}</div>{% endfor %}
