@@ -119,31 +119,35 @@ def truncate_goo(db_path: Optional[Path] = None) -> None:
 
 
 def bulk_insert_goo(records: Iterable[CarRecord], db_path: Optional[Path] = None) -> int:
-    count = 0
     conn = get_connection(db_path)
     try:
+        params = []
+        for rec in records:
+            row = rec.to_db_row()
+            row["created_at"] = datetime.now(timezone.utc).isoformat()
+            m = row.get("mission")
+            if isinstance(m, str) and m.strip() == "ミッション":
+                row["mission"] = None
+            b = row.get("bodytype")
+            if isinstance(b, str) and b.strip() == "ボディタイプ":
+                row["bodytype"] = None
+            params.append(row)
         with conn:
-            for rec in records:
-                row = rec.to_db_row()
-                row["created_at"] = datetime.now(timezone.utc).isoformat()
-                m = row.get("mission")
-                if isinstance(m, str) and m.strip() == "ミッション":
-                    row["mission"] = None
-                b = row.get("bodytype")
-                if isinstance(b, str) and b.strip() == "ボディタイプ":
-                    row["bodytype"] = None
-                conn.execute(
-                    """
-                    INSERT OR REPLACE INTO goo (
-                        id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,source,url,created_at,raw_json
-                    ) VALUES (
-                        :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:source,:url,:created_at,:raw_json
-                    );
-                    """,
-                    row,
-                )
-                count += 1
-        return count
+            if params:
+                chunk_size = 500
+                for i in range(0, len(params), chunk_size):
+                    chunk = params[i:i + chunk_size]
+                    conn.executemany(
+                        """
+                        INSERT OR REPLACE INTO goo (
+                            id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,source,url,created_at,raw_json
+                        ) VALUES (
+                            :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:source,:url,:created_at,:raw_json
+                        );
+                        """,
+                        chunk,
+                    )
+        return len(params)
     finally:
         conn.close()
 
@@ -194,49 +198,53 @@ def upsert_car(record: CarRecord, db_path: Optional[Path] = None) -> None:
 
 
 def bulk_upsert_cars(records: Iterable[CarRecord], db_path: Optional[Path] = None) -> int:
-    count = 0
     conn = get_connection(db_path)
     try:
+        params = []
+        for rec in records:
+            row = rec.to_db_row()
+            row["created_at"] = datetime.now(timezone.utc).isoformat()
+            params.append(row)
         with conn:
-            for rec in records:
-                row = rec.to_db_row()
-                row["created_at"] = datetime.now(timezone.utc).isoformat()
-                conn.execute(
-                    """
-                    INSERT INTO car (
-                        id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,category,source,url,created_at,raw_json
-                    ) VALUES (
-                        :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:category,:source,:url,:created_at,:raw_json
+            if params:
+                chunk_size = 500
+                for i in range(0, len(params), chunk_size):
+                    chunk = params[i:i + chunk_size]
+                    conn.executemany(
+                        """
+                        INSERT INTO car (
+                            id,manufacturer,name,price,year,rd,engine,color,mission1,mission2,bodytype,repair,location,option,wd,seat,door,fuel,handle,jc08,category,source,url,created_at,raw_json
+                        ) VALUES (
+                            :id,:manufacturer,:name,:price,:year,:rd,:engine,:color,:mission1,:mission2,:bodytype,:repair,:location,:option,:wd,:seat,:door,:fuel,:handle,:jc08,:category,:source,:url,:created_at,:raw_json
+                        )
+                        ON CONFLICT(id) DO UPDATE SET
+                            manufacturer=excluded.manufacturer,
+                            name=excluded.name,
+                            price=excluded.price,
+                            year=excluded.year,
+                            rd=excluded.rd,
+                            engine=excluded.engine,
+                            color=excluded.color,
+                            mission1=excluded.mission1,
+                            mission2=excluded.mission2,
+                            bodytype=excluded.bodytype,
+                            repair=excluded.repair,
+                            location=excluded.location,
+                            option=excluded.option,
+                            wd=excluded.wd,
+                            seat=excluded.seat,
+                            door=excluded.door,
+                            fuel=excluded.fuel,
+                            handle=excluded.handle,
+                            jc08=excluded.jc08,
+                            category=excluded.category,
+                            source=excluded.source,
+                            url=excluded.url,
+                            raw_json=excluded.raw_json
+                        ;
+                        """,
+                        chunk,
                     )
-                    ON CONFLICT(id) DO UPDATE SET
-                        manufacturer=excluded.manufacturer,
-                        name=excluded.name,
-                        price=excluded.price,
-                        year=excluded.year,
-                        rd=excluded.rd,
-                        engine=excluded.engine,
-                        color=excluded.color,
-                        mission1=excluded.mission1,
-                        mission2=excluded.mission2,
-                        bodytype=excluded.bodytype,
-                        repair=excluded.repair,
-                        location=excluded.location,
-                        option=excluded.option,
-                        wd=excluded.wd,
-                        seat=excluded.seat,
-                        door=excluded.door,
-                        fuel=excluded.fuel,
-                        handle=excluded.handle,
-                        jc08=excluded.jc08,
-                        category=excluded.category,
-                        source=excluded.source,
-                        url=excluded.url,
-                        raw_json=excluded.raw_json
-                    ;
-                    """,
-                    row,
-                )
-                count += 1
-        return count
+        return len(params)
     finally:
         conn.close()

@@ -140,11 +140,17 @@ def bulk_insert_goo(records: Iterable[CarRecord]) -> int:
                 "VALUES (%(id)s,%(manufacturer)s,%(name)s,%(price)s,%(year)s,%(rd)s,%(engine)s,%(color)s,%(mission1)s,%(mission2)s,%(bodytype)s,%(repair)s,%(location)s,%(option)s,%(wd)s,%(seat)s,%(door)s,%(fuel)s,%(handle)s,%(jc08)s,%(source)s,%(url)s,%(created_at)s,%(raw_json)s) "
                 "ON DUPLICATE KEY UPDATE manufacturer=VALUES(manufacturer),name=VALUES(name),price=VALUES(price),year=VALUES(year),rd=VALUES(rd),engine=VALUES(engine),color=VALUES(color),mission1=VALUES(mission1),mission2=VALUES(mission2),bodytype=VALUES(bodytype),repair=VALUES(repair),location=VALUES(location),`option`=VALUES(`option`),wd=VALUES(wd),seat=VALUES(seat),door=VALUES(door),fuel=VALUES(fuel),handle=VALUES(handle),jc08=VALUES(jc08),source=VALUES(source),url=VALUES(url),created_at=VALUES(created_at),raw_json=VALUES(raw_json)"
             )
+            params = []
             for rec in records:
                 row = _to_mysql_row(rec)
                 row['created_at'] = datetime.utcnow().isoformat()
-                cur.execute(insert_sql, row)
-                count += 1
+                params.append(row)
+            # executemany in chunks to avoid too-large statements
+            chunk_size = 500
+            for i in range(0, len(params), chunk_size):
+                chunk = params[i:i + chunk_size]
+                cur.executemany(insert_sql, chunk)
+                count += len(chunk)
         conn.commit()
         return count
     finally:
@@ -178,11 +184,16 @@ def bulk_upsert_cars(records: Iterable[CarRecord]) -> int:
                 "VALUES (%(id)s,%(manufacturer)s,%(name)s,%(price)s,%(year)s,%(rd)s,%(engine)s,%(color)s,%(mission1)s,%(mission2)s,%(bodytype)s,%(repair)s,%(location)s,%(option)s,%(wd)s,%(seat)s,%(door)s,%(fuel)s,%(handle)s,%(jc08)s,%(category)s,%(source)s,%(url)s,%(created_at)s,%(raw_json)s) "
                 "ON DUPLICATE KEY UPDATE manufacturer=VALUES(manufacturer),name=VALUES(name),price=VALUES(price),year=VALUES(year),rd=VALUES(rd),engine=VALUES(engine),color=VALUES(color),mission1=VALUES(mission1),mission2=VALUES(mission2),bodytype=VALUES(bodytype),repair=VALUES(repair),location=VALUES(location),`option`=VALUES(`option`),wd=VALUES(wd),seat=VALUES(seat),door=VALUES(door),fuel=VALUES(fuel),handle=VALUES(handle),jc08=VALUES(jc08),category=VALUES(category),source=VALUES(source),url=VALUES(url),raw_json=VALUES(raw_json)"
             )
+            params = []
             for rec in records:
                 row = _to_mysql_row(rec)
                 row['created_at'] = datetime.utcnow().isoformat()
-                cur.execute(insert_sql, row)
-                count += 1
+                params.append(row)
+            chunk_size = 500
+            for i in range(0, len(params), chunk_size):
+                chunk = params[i:i + chunk_size]
+                cur.executemany(insert_sql, chunk)
+                count += len(chunk)
         conn.commit()
         return count
     finally:
