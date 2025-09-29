@@ -181,11 +181,20 @@ def index():
             doors = _vals('door')
             fuels = _vals('fuel')
             handles = _vals('handle')
+            # build fixed price options: 400,000 (40万) up to 10,000,000 (1000万) with 200,000 (20万) steps
+            price_options = []
+            start = 400000
+            step = 200000
+            max_price = 10000000
+            p = start
+            while p <= max_price:
+                price_options.append(p)
+                p += step
     finally:
         conn.close()
     files = _list_summary_files()
     state = current_app.extensions.get('scrape_state') or {}
-    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, manufacturers=manufacturers, names=names, mission1s=mission1s, mission2s=mission2s, repairs=repairs, locations=locations, years=years, categories=categories, wds=wds, seats=seats, doors=doors, fuels=fuels, handles=handles, engines=engines, sort=sort, dir=dir_, state=state)
+    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, manufacturers=manufacturers, names=names, mission1s=mission1s, mission2s=mission2s, repairs=repairs, locations=locations, years=years, categories=categories, wds=wds, seats=seats, doors=doors, fuels=fuels, handles=handles, engines=engines, price_options=price_options, sort=sort, dir=dir_, state=state)
 
 
 @bp.route('/scrape', methods=['POST'])

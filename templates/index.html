@@ -88,7 +88,15 @@
 				<div class="header-control"><div id="ctrl-manufacturer"></div></div>
 				<div class="header-control"><div id="ctrl-name"></div></div>
 				<div class="header-control"><div id="ctrl-year"></div></div>
-				<div class="header-control"><div id="ctrl-price"></div></div>
+				<div class="header-control"><div id="ctrl-price">
+					<select name="price_max" class="hdr-ctrl">
+						<option value=""></option>
+						{% for p in price_options %}
+							{# display in 万単位 without decimals #}
+							<option value="{{ p }}" {% if request.args.get('price_max') == (p|string) %}selected{% endif %}>{{ (p // 10000) }}万</option>
+						{% endfor %}
+					</select>
+				</div></div>
                 
 				<div class="header-control"><div id="ctrl-engine">
 					<select name="engine" class="hdr-ctrl" style="display:{{ 'inline-block' if request.args.get('engine') else 'none' }};">
@@ -289,8 +297,7 @@
 							// year >= input
 							(function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='year_min'; inp.placeholder='年'; inp.classList.add('hdr-ctrl'); insertControlById('ctrl-year', inp); if(INIT.year_min){ inp.value = INIT.year_min; inp.style.display='inline-block'; } })();
 
-							// price <= input
-							  (function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='price_max'; inp.placeholder='万'; inp.classList.add('hdr-ctrl'); insertControlById('ctrl-price', inp); if(INIT.price_max){ inp.value = INIT.price_max; inp.style.display='inline-block'; } })();
+
 
 							// category: 軽/普通
 							  (function(){ const sel=document.createElement('select'); sel.name='category'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); ['軽','普通'].forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-category', sel); if(INIT.category){ sel.value = INIT.category; sel.style.display='inline-block'; } })();
