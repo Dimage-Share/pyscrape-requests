@@ -10,7 +10,11 @@
 		/* header converted to grid: first column flexible, second column fixed 92px */
 		.header-grid { display:grid; grid-template-columns: 1fr repeat(8, 92px); grid-auto-rows: auto; gap:var(--gap); align-items:center; }
 		.header-label { color: rgba(255,255,255,0.95); background:transparent; font-size:.9rem; }
-		.header-control { display:flex; justify-content:flex-end; }
+		.header-control { display:flex; justify-content:flex-start; }
+		/* ensure controls are left-aligned and stacked to the left */
+		.header-control > * { margin:0; }
+		/* unified control width for header controls */
+		.hdr-ctrl { width:92px; box-sizing:border-box; display:inline-block; margin-right:6px; }
 		.header-col label { font-size:.8rem; color:rgba(255,255,255,0.9); margin-bottom:4px; }
 		.header-col .control { margin-top:0; display:flex; align-items:center; }
 		/* header inputs/buttons contrast */
@@ -75,8 +79,8 @@
 				
 				<!-- Row 2: controls -->
 				<div style="grid-column:1; display:flex; gap:8px; align-items:center;">
-					<input id="global-q" name="q" type="text" placeholder="全カラムを検索" value="{{ request.args.get('q','') }}" style="width:100%;" />
-					<button type="submit" class="btn-primary" style="margin-left:auto;">検索</button>
+					<input id="global-q" name="q" type="text" placeholder="全カラムを検索" value="{{ request.args.get('q','') }}" style="width:256px;" />
+					<button type="submit" class="btn-primary" style="margin-right:48px;">検索</button>
 				</div>
 				<div class="header-control"><div id="ctrl-manufacturer"></div></div>
 				<div class="header-control"><div id="ctrl-name"></div></div>
@@ -235,7 +239,7 @@
 
 							// manufacturer select
 							(function(){
-								const sel = document.createElement('select'); sel.name='manufacturer'; sel.style.width='90px';
+								const sel = document.createElement('select'); sel.name='manufacturer'; sel.classList.add('hdr-ctrl');
 								const any = document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any);
 								(OPTIONS.manufacturer||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
 								insertControlById('ctrl-manufacturer', sel);
@@ -243,29 +247,29 @@
 
 							// name select
 							(function(){
-								const sel = document.createElement('select'); sel.name='name'; sel.style.width='90px';
+								const sel = document.createElement('select'); sel.name='name'; sel.classList.add('hdr-ctrl');
 								const any = document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any);
 								(OPTIONS.name||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
 								insertControlById('ctrl-name', sel);
 							})();
 
 							// year >= input
-							(function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='year_min'; inp.placeholder='年'; inp.style.width='80px'; insertControlById('ctrl-year', inp); })();
+							(function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='year_min'; inp.placeholder='年'; inp.classList.add('hdr-ctrl'); insertControlById('ctrl-year', inp); })();
 
 							// price <= input
-							(function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='price_max'; inp.placeholder='万'; inp.style.width='80px'; insertControlById('ctrl-price', inp); })();
+							  (function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='price_max'; inp.placeholder='万'; inp.classList.add('hdr-ctrl'); insertControlById('ctrl-price', inp); })();
 
 							// category: 軽/普通
-							(function(){ const sel=document.createElement('select'); sel.name='category'; sel.style.width='90px'; const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); ['軽','普通'].forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-category', sel); })();
+							  (function(){ const sel=document.createElement('select'); sel.name='category'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); ['軽','普通'].forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-category', sel); })();
 
 							// wd
-							(function(){ const sel=document.createElement('select'); sel.name='wd'; sel.style.width='90px'; const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.wd||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-wd', sel); })();
+							  (function(){ const sel=document.createElement('select'); sel.name='wd'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.wd||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-wd', sel); })();
 
 							// seat
-							(function(){ const sel=document.createElement('select'); sel.name='seat'; sel.style.width='90px'; const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.seat||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-seat', sel); })();
+							  (function(){ const sel=document.createElement('select'); sel.name='seat'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.seat||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-seat', sel); })();
 
 							// door
-							(function(){ const sel=document.createElement('select'); sel.name='door'; sel.style.width='90px'; const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.door||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-door', sel); })();
+							  (function(){ const sel=document.createElement('select'); sel.name='door'; sel.classList.add('hdr-ctrl'); const any=document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any); (OPTIONS.door||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); }); insertControlById('ctrl-door', sel); })();
 
 											// clicking labels toggles visibility and focuses the control
 											document.querySelectorAll('.header-label').forEach(lbl => {
