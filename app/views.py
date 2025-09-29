@@ -84,6 +84,16 @@ def index():
     # Build SQL dynamically
     where = []
     params = {}
+    # Global free-text search across multiple columns
+    q = request.args.get('q', '').strip()
+    if q:
+        # search in text-like columns (use LIKE)
+        qcols = ['manufacturer','name','mission1','mission2','bodytype','repair','location','option','category','wd','fuel','handle','url','raw_json']
+        like_clauses = []
+        for c in qcols:
+            like_clauses.append(f"{c} LIKE :q")
+        where.append('(' + ' OR '.join(like_clauses) + ')')
+        params['q'] = f"%{q}%"
     if filters['manufacturer']:
         where.append('manufacturer = :manufacturer')
         params['manufacturer'] = filters['manufacturer']
