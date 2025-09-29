@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .client import CarSensorClient
 from .carsensor_parser import parse_cars_carsensor, get_next_page_url_carsensor, parse_car_detail
-from .db import init_db, bulk_upsert_cars, truncate_goo, bulk_insert_goo
+from app.db import init_db, bulk_upsert_cars, truncate_goo, bulk_insert_goo
 from .logger import Logger
 
 
@@ -109,7 +109,7 @@ class Scrape:
                     car.category = None
             except Exception:
                 car.category = None
-                
+            
             # mission→mission2リネーム
             if hasattr(car, 'mission2') or hasattr(car, 'mission'):
                 mval = getattr(car, 'mission', None)
@@ -332,7 +332,7 @@ class Scrape:
         content = '# Summary\n' + '\n'.join(['````', *lines, '````', ''])
         # Windowsメモ帳互換のため BOM 付きUTF-8で保存
         path.write_text(content, encoding='utf-8-sig')
-
+    
     # ---- 詳細ページ統合 ----
     @staticmethod
     def _enrich_with_details(client: CarSensorClient, cars: List[Any]) -> None:

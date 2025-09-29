@@ -1,10 +1,4 @@
-"""Compatibility shim re-exporting the app.db sqlite adapter for goo_net_scrape.
-
-Older code importing `goo_net_scrape.db` will continue to work while the
-implementation is provided by `app.db`.
-"""
-
-from app.db import (
+from .sqlite import (
     get_connection,
     init_db,
     truncate_goo,
