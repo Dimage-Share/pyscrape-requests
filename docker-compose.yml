@@ -1,0 +1,26 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: pyscrape_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: example_root_pwd
+      MYSQL_DATABASE: pyscrape
+      MYSQL_USER: pyscrape
+      MYSQL_PASSWORD: pyscrape_pwd
+    ports:
+      - "33062:3306"
+    command: --default-authentication-plugin=mysql_native_password
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db_data:
+    name: pyscrape_mysql_data

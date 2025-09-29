@@ -4,3 +4,5 @@ lxml>=5.2.0
 urllib3>=2.2.0
 colorama>=0.4.6
 Flask>=3.0.0
+pymysql>=1.0.3
+cryptography>=40.0.0
