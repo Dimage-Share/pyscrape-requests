@@ -94,22 +94,6 @@
 		</form>
 	</header>
 	<main>
-		<aside>
-			<h1>検索条件</h1>
-			<!-- サイドバーのプリセットはヘッダに移動しました -->
-			<div class="summary-files">
-				<h2 style="font-size:1rem;">Summary Files</h2>
-				{% if files %}
-					<ul style="padding-left:16px; margin:4px 0; max-height:180px; overflow:auto;">
-					{% for f in files %}
-						<li style="font-size:.7rem;">
-							<a href="{{ url_for('main.show_file', name=f) }}">{{ f }}</a>
-						</li>
-					{% endfor %}
-					</ul>
-				{% else %}<p style="font-size:.7rem;">なし</p>{% endif %}
-			</div>
-		</aside>
 		<section>
 			<div style="display:flex; justify-content:space-between; align-items:center;">
 				<h1>検索結果</h1>
