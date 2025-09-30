@@ -2,6 +2,7 @@ from __future__ import annotations
 from flask import current_app, render_template, redirect, url_for, send_file, request, flash
 from pathlib import Path
 from typing import List
+import re
 
 
 SUMMARY_PREFIX = 'summary-'
@@ -147,49 +148,153 @@ def register(bp):
                 where.append('price <= :price_max')
             except Exception:
                 flash('price_maxは整数', 'error')
-        sql = 'SELECT id,manufacturer,name,price,year,rd,engine,mission1,mission2,bodytype,repair,location,wd,seat,door,fuel,handle,jc08,option,category,url FROM car'
+        select_cols = ['id', 'manufacturer', 'name', 'price', 'year', 'rd', 'engine', 'mission1', 'mission2', 'bodytype', 'repair', 'location', 'wd', 'seat', 'door', 'fuel', 'handle', 'jc08', 'option', 'category', 'url']
+        cols_sql = ','.join([f'`{c}`' for c in select_cols])
+        sql = f'SELECT {cols_sql} FROM car'
         if where:
             sql += ' WHERE ' + ' AND '.join(where)
-        sql += f' ORDER BY {sort} {dir_.upper()}{secondary_order} LIMIT 300'
+        # Quote order-by columns as well
+        secondary_order = ''
+        if sort != 'price':
+            secondary_order = ', `price` ASC'
+        if sort != 'year':
+            secondary_order += ', `year` DESC'
+        sql += f' ORDER BY `{sort}` {dir_.upper()}{secondary_order} LIMIT 300'
         
         # Fetch distinct values for dropdowns
         from core.db import get_connection
         conn = get_connection()
         try:
-            with conn:
-                cur = conn.execute(sql, params)
-                rows = [dict(zip([c[0] for c in cur.description], r)) for r in cur.fetchall()]
-                
-                def _vals(col):
-                    c2 = conn.execute(f'SELECT DISTINCT {col} FROM goo WHERE {col} IS NOT NULL AND {col} != "" ORDER BY {col} LIMIT 200').fetchall()
-                    return [v[0] for v in c2]
-                
-                bodytypes = _vals('bodytype')
-                manufacturers = _vals('manufacturer')
-                names = _vals('name')
-                mission1s = _vals('mission1')
-                engines = _vals('engine')
-                mission2s = _vals('mission2')
-                repairs = _vals('repair')
-                locations = _vals('location')
-                years = [r[0] for r in conn.execute('SELECT DISTINCT year FROM goo WHERE year IS NOT NULL ORDER BY year DESC LIMIT 50').fetchall()]
-                categories = _vals('category')
-                wds = _vals('wd')
-                seats = _vals('seat')
-                doors = _vals('door')
-                fuels = _vals('fuel')
-                handles = _vals('handle')
-                # build fixed price options: 400,000 (40万) up to 10,000,000 (1000万) with 200,000 (20万) steps
-                price_options = []
-                start = 400000
-                step = 200000
-                max_price = 10000000
-                p = start
-                while p <= max_price:
-                    price_options.append(p)
-                    p += step
+            with conn.cursor() as cur:
+                cur.execute(sql, params)
+                fetched = cur.fetchall()
+                # If cursor returns mapping-like rows (dict), use them directly; otherwise zip description with sequence
+                rows = []
+                if fetched:
+                    first = fetched[0]
+                    if isinstance(first, dict):
+                        rows = [dict(r) for r in fetched]
+                    else:
+                        cols = [c[0] for c in cur.description]
+                        rows = [dict(zip(cols, r)) for r in fetched]
+                # Normalize numeric fields so Jinja formatting won't fail when values are strings
+                for row in rows:
+                    # normalize empty strings to None
+                    for k in list(row.keys()):
+                        if row[k] == '':
+                            row[k] = None
+                    # price, rd (走行距離), engine, year, jc08 may be numeric but returned as strings
+                    for num_col in ('price', 'rd', 'engine', 'year'):
+                        v = row.get(num_col)
+                        if v is None:
+                            continue
+                        try:
+                            # decode bytes
+                            if isinstance(v, (bytes, bytearray)):
+                                v = v.decode('utf-8', errors='ignore')
+                            # if string, remove common thousands separators and non-numeric chars
+                            if isinstance(v, str):
+                                s = v.strip()
+                                # replace fullwidth comma, normal comma, spaces
+                                s = s.replace('，', '').replace(',', '').replace('\u00A0', '').replace(' ', '')
+                                # remove any non-digit, non-dot, non-minus
+                                s = re.sub(r"[^0-9\.\-]", '', s)
+                                if s == '':
+                                    continue
+                                v = s
+                            row[num_col] = int(float(v))
+                        except Exception:
+                            # leave as-is (could be non-numeric)
+                            pass
+                    # jc08 may be float
+                    v = row.get('jc08')
+                    if v is not None:
+                        try:
+                            if isinstance(v, (bytes, bytearray)):
+                                v = v.decode('utf-8', errors='ignore')
+                            if isinstance(v, str):
+                                s = v.strip().replace('，', '').replace(',', '').replace('\u00A0', '').replace(' ', '')
+                                s = re.sub(r"[^0-9\.\-]", '', s)
+                                if s == '':
+                                    raise ValueError('empty')
+                                v = s
+                            row['jc08'] = float(v)
+                        except Exception:
+                            pass
+            
+            def _vals(col: str):
+                with conn.cursor() as c2:
+                    # Use parameter-less f-string; col is from whitelist usage in this file
+                    c2.execute(f"SELECT DISTINCT `{col}` FROM goo WHERE `{col}` IS NOT NULL AND `{col}` != '' ORDER BY `{col}` LIMIT 200")
+                    fetched = c2.fetchall()
+                    vals = []
+                    for v in fetched:
+                        # v may be a tuple/list (indexable by 0) or a dict (mapping column name -> value)
+                        if isinstance(v, dict):
+                            # prefer explicit column key when available
+                            if col in v:
+                                vals.append(v[col])
+                            else:
+                                # fall back to first value
+                                try:
+                                    vals.append(next(iter(v.values())))
+                                except StopIteration:
+                                    vals.append(None)
+                        else:
+                            # assume sequence-like
+                            try:
+                                vals.append(v[0])
+                            except Exception:
+                                vals.append(None)
+                    return vals
+            
+            bodytypes = _vals('bodytype')
+            manufacturers = _vals('manufacturer')
+            names = _vals('name')
+            mission1s = _vals('mission1')
+            engines = _vals('engine')
+            mission2s = _vals('mission2')
+            repairs = _vals('repair')
+            locations = _vals('location')
+            with conn.cursor() as cy:
+                cy.execute('SELECT DISTINCT year FROM goo WHERE year IS NOT NULL ORDER BY year DESC LIMIT 50')
+                fetched_years = cy.fetchall()
+                years = []
+                for r in fetched_years:
+                    if isinstance(r, dict):
+                        # try key 'year' then first value
+                        if 'year' in r:
+                            years.append(r['year'])
+                        else:
+                            try:
+                                years.append(next(iter(r.values())))
+                            except StopIteration:
+                                years.append(None)
+                    else:
+                        try:
+                            years.append(r[0])
+                        except Exception:
+                            years.append(None)
+            categories = _vals('category')
+            wds = _vals('wd')
+            seats = _vals('seat')
+            doors = _vals('door')
+            fuels = _vals('fuel')
+            handles = _vals('handle')
+            # build fixed price options: 400,000 (40万) up to 10,000,000 (1000万) with 200,000 (20万) steps
+            price_options = []
+            start = 400000
+            step = 200000
+            max_price = 10000000
+            p = start
+            while p <= max_price:
+                price_options.append(p)
+                p += step
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
         files = _list_summary_files()
         state = current_app.extensions.get('scrape_state') or {}
         return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, manufacturers=manufacturers, names=names, mission1s=mission1s, mission2s=mission2s, repairs=repairs, locations=locations, years=years, categories=categories, wds=wds, seats=seats, doors=doors, fuels=fuels, handles=handles, engines=engines, price_options=price_options,
