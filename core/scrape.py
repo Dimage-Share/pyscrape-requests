@@ -29,10 +29,11 @@ class Scrape:
         self.page_delay = page_delay
     
     # ---- Public API ----
-    def run(self, pages: int, params: Dict[str, Any]) -> Path:
+    def run(self, pages: int, params: Dict[str, Any], *, flush_pages: Optional[int] = None) -> Path:
         """Execute scraping for a given number of pages and return summary file path."""
         t_total_start = time.perf_counter()
         all_cars: List[Any] = []
+        total_inserted = 0
         init_db()
         # Truncate goo table at start per requirement
         truncate_goo()
@@ -81,7 +82,17 @@ class Scrape:
                 # Increment pages_fetched only once per full page retrieval
                 pages_fetched += 1
                 elapsed_ms = (time.perf_counter() - t_page_start) * 1000.0
-                log.info(f"Page done page={target_page} records={len(cars)} total={len(all_cars)} {elapsed_ms:.1f}ms")
+                log.info(f"Page done page={target_page} records={len(cars)} total_buffer={len(all_cars)} {elapsed_ms:.1f}ms")
+                # セグメントフラッシュ: flush_pages 毎に listing へ upsert して途中中断耐性を高める
+                if flush_pages and pages_fetched % flush_pages == 0:
+                    try:
+                        if all_cars:
+                            inserted_now = bulk_insert_listing(all_cars, site='carsensor') if bulk_insert_listing else 0
+                            total_inserted += inserted_now
+                            log.info(f"flush insert pages_fetched={pages_fetched} inserted_now={inserted_now} total_inserted={total_inserted}")
+                            all_cars.clear()
+                    except Exception as e:  # noqa: BLE001
+                        log.warn(f"flush insert failed pages_fetched={pages_fetched} error={e}")
         
         # If loop exited without logging last page (e.g., break before increment), adjust pages_fetched
         if pages_fetched == 1 and pages > 1:
@@ -129,8 +140,11 @@ class Scrape:
             if jc and isinstance(jc, str):
                 car.jc08 = jc.replace('（km/L）', '').replace('(km/L)', '').strip() or None
         # write to unified `listing` table with site='carsensor'
-        inserted = bulk_insert_listing(all_cars, site='carsensor') if bulk_insert_listing else bulk_insert_goo(all_cars)
-        log.info(f"listing (carsensor) insert records={inserted}")
+        inserted = 0
+        if all_cars:
+            inserted = bulk_insert_listing(all_cars, site='carsensor') if bulk_insert_listing else bulk_insert_goo(all_cars)
+            total_inserted += inserted
+        log.info(f"listing (carsensor) final_insert records={inserted} total_inserted={total_inserted}")
         # car テーブルにも同内容を upsert (分析/将来差分用途)
         try:
             from .db import bulk_upsert_cars

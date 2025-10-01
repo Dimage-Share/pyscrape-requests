@@ -185,6 +185,79 @@ sqlite3 .\database.db ".mode markdown" ".headers on" "SELECT id,name,price,year,
 
 既知制限: A/B プラン複数価格, 税込/税抜差異, グレード差分など細部は未取得。必要に応じ `source` HTML を二次解析してください。
 
+## 統合 listing テーブルについて
+現在は Goo / CarSensor 双方のデータを `listing` テーブル (主キー: `site`,`id`) に統合保存しています。旧 `goo` / `car` テーブルは後方互換と一部分析用途で残していますが、検索 UI・再スクレイプは `listing` を参照します。
+
+| 列                  | 説明                                                   |
+| ------------------- | ------------------------------------------------------ |
+| site                | 'carsensor' / 'goo' 等 ソース識別子                    |
+| id                  | サイト固有 ID (CarSensor: AUxxxx, Goo: tr_*/td_* 由来) |
+| manufacturer        | (将来分類用) CarSensor 名称分割後左側など              |
+| mission1 / mission2 | ミッション種別主要キー / フルテキスト                  |
+| category            | 軽/普通 等自動判定                                     |
+| raw_json            | 抽出元テキスト・正規化補助情報・suspicious フラグ      |
+
+## 正規化 & suspicious フラグ
+Goo / CarSensor 双方の bodytype について以下正規化と異常検出を行っています:
+
+- 代表揺れ: `ミニバン・ワンボックス` → `ミニバン` / `SUV・クロスカントリー` → `SUV`
+- 先頭に Unicode 置換文字 `�` 系列が連続する場合 suspicious
+- ASCII 長大連続 (英字 8 文字以上) など文脈不自然なもの suspicious
+- suspicious 時: `raw_json` に `"suspicious_bodytype": true` を付加
+
+`scripts/report_normalization_stats.py` で頻度と suspicious 件数を確認できます。`scripts/list_suspicious_listings.py` により対象行の一覧/CSV/NULL化が可能です。
+
+## セグメント再スクレイプワークフロー
+大量ページ取得 (例: 300 ページ) を安全に実行するため、50 ページ単位で Flush するセグメント実行スクリプトを用意しています。
+
+```powershell
+# CarSensor 300ページ (50ページごと flush)
+python .\scripts\run_scrapes_segmented.py --site carsensor --pages 300 --batch-size 50 --delay 1 --confirm
+
+# Goo 300ページ
+python .\scripts\run_scrapes_segmented.py --site goo --pages 300 --batch-size 50 --delay 1 --confirm
+
+# 全リセットして両サイト再取得
+python .\scripts\reset_and_rescrape.py --pages 300 --batch 50 --delay 1 --confirm
+```
+
+中断耐性: CarSensor は flush 時点まで `listing` に永続化済みのため再開時に `--resume` (CarSensorセグメントスクリプト) を活用可能です。
+
+## 新規ユーティリティスクリプト一覧
+
+| スクリプト                              | 用途                                                |
+| --------------------------------------- | --------------------------------------------------- |
+| `scripts/run_scrapes_segmented.py`      | サイト別セグメントスクレイプ (flush / resume)       |
+| `scripts/reset_and_rescrape.py`         | listing 全削除後、両サイト一括再スクレイプ          |
+| `scripts/report_normalization_stats.py` | bodytype 頻度 / suspicious 件数レポート             |
+| `scripts/list_suspicious_listings.py`   | suspicious 行の表示 / CSV 出力 / bodytype NULL 化   |
+| `scripts/encoding_log_report.py`        | `encoding_log` 日次・エンコーディング別集計         |
+| `scripts/refresh_replacement_rows.py`   | 置換文字(U+FFFD)含む listing 行の再取得アップサート |
+
+### 部分再フェッチ (置換文字含む行のみ修復)
+```powershell
+# Goo のみ 200件上限 (dry-run)
+python .\scripts\refresh_replacement_rows.py --site goo --limit 200
+
+# CarSensor 対象を 100ページ探索し修復 (コミット)
+python .\scripts\refresh_replacement_rows.py --site carsensor --limit 150 --pages 100 --commit
+```
+
+## エンコーディング検出ログ (encoding_log)
+Goo 取得時に候補エンコーディングをスコアリング (日本語文字割合 - 置換文字ペナルティ) し、上位候補と採用エンコーディングを `encoding_log` に記録します。
+
+カラム: `site, url, chosen_encoding, score, top_candidates (enc:score カンマ列), created_at`
+
+日次集計:
+```powershell
+python .\scripts\encoding_log_report.py --days 3
+```
+
+古いログ削除 (7日保持例):
+```powershell
+python -c "from goo_net_scrape.client import cleanup_encoding_log; print(cleanup_encoding_log(7))"
+```
+
 ## 今後の TODO (例)
 - [ ] 相対 URL (`url`) をオプションで絶対化する `--abs-url` フラグ
 - [ ] 年式が和暦 + 年式不明 ("年式(初度登録年)\n不明") パターンの追加正規化
@@ -196,6 +269,9 @@ sqlite3 .\database.db ".mode markdown" ".headers on" "SELECT id,name,price,year,
 - [ ] robots.txt / 利用規約チェック自動化
 - [ ] レート制限・指数バックオフ・ランダムジッター
 - [ ] `source` サイズ肥大対策 (圧縮/外部テーブル分離オプション)
+ - [ ] suspicious 行自動再フェッチ (詳細ページから正規 bodytype 逆算)
+ - [ ] bodytype / mission 辞書管理 (外部 YAML + 自動同期)
+ - [ ] 正規化ステップの統計的精度モニタリング (日次 diff レポート)
 
 ## 文字化け (Mojibake) の修復について
 

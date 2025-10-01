@@ -27,7 +27,9 @@ from bs4 import BeautifulSoup
 from lxml import html as lhtml
 
 from .models import CarRecord
+from goo_net_scrape.normalize import normalize_bodytype  # reuse normalization
 from .logger import Logger
+
 
 log = Logger.bind(__name__)
 
@@ -151,7 +153,7 @@ def parse_cars_carsensor(html: str) -> List[CarRecord]:
     soup = BeautifulSoup(html, 'lxml')
     tree = lhtml.fromstring(html)
     records: List[CarRecord] = []
-
+    
     # --- XPathベース高精度抽出 (id=AU*_cas コンテナ) ---
     try:
         containers = tree.xpath('//*[starts-with(@id, "AU") and contains(@id, "_cas")]')
@@ -209,41 +211,33 @@ def parse_cars_carsensor(html: str) -> List[CarRecord]:
                     href = link[0].get('href')
                 # HTML断片
                 fragment_html = lhtml.tostring(cont, encoding='unicode')
+                norm_body, suspicious = normalize_bodytype(_sanitize_text(_clean(bodytype_text)))
+                raw_payload = {
+                    'price_text': _sanitize_text(price_text),
+                    'year_text': _sanitize_text(year_text),
+                    'mileage_text': _sanitize_text(mileage_text),
+                    'engine_text': _sanitize_text(engine_text),
+                    'mission_text': _sanitize_text(mission_text),
+                    'bodytype_text': _sanitize_text(bodytype_text),
+                    'repair_text': _sanitize_text(repair_text),
+                    'location_text': _sanitize_text(location_text),
+                    'extraction': 'xpath_primary'
+                }
+                if suspicious:
+                    raw_payload['suspicious_bodytype'] = True
                 record = CarRecord(
-                    id=_sanitize_text(car_id) or car_id,
-                    name=_sanitize_text(_fw_to_hw(name)),
-                    price=_norm_price(price_text),
-                    year=_norm_year(year_text),
-                    rd=_norm_mileage(mileage_text),
-                    engine=_norm_engine(engine_text),
-                    color=None,
-                    mission2=_sanitize_text(_clean(mission_text)),
-                    bodytype=_sanitize_text(_clean(bodytype_text)),
-                    repair=_sanitize_text(_clean(repair_text)),
-                    location=_sanitize_text(_clean(location_text)),
-                    source=fragment_html,
-                    url=_sanitize_text(href if (href or '').startswith('http') else (f"https://www.carsensor.net{href}" if href else None)),
-                    raw={
-                        'price_text': _sanitize_text(price_text),
-                        'year_text': _sanitize_text(year_text),
-                        'mileage_text': _sanitize_text(mileage_text),
-                        'engine_text': _sanitize_text(engine_text),
-                        'mission_text': _sanitize_text(mission_text),
-                        'bodytype_text': _sanitize_text(bodytype_text),
-                        'repair_text': _sanitize_text(repair_text),
-                        'location_text': _sanitize_text(location_text),
-                        'extraction': 'xpath_primary'
-                    }
-                )
+                    id=_sanitize_text(car_id) or car_id, name=_sanitize_text(_fw_to_hw(name)), price=_norm_price(price_text), year=_norm_year(year_text), rd=_norm_mileage(mileage_text), engine=_norm_engine(engine_text), color=None, mission2=_sanitize_text(_clean(mission_text)), bodytype=norm_body, repair=_sanitize_text(_clean(repair_text)), location=_sanitize_text(
+                        _clean(location_text)), source=fragment_html, url=_sanitize_text(href if (href or '').startswith('http') else (f"https://www.carsensor.net{href}" if href else None)), raw=raw_payload)
                 records.append(record)
             except Exception as e:  # noqa: BLE001
                 log.debug(f"xpath primary extract fail error={e}")
     except Exception:
         pass
-
+    
     # 既にXPathで一定件数取得できた場合はヒューリスティック追加抽出をスキップ(重複防止)
-    existing_ids = {r.id for r in records}
-
+    existing_ids = {r.id
+                    for r in records}
+    
     # 想定カード: article タグ or li要素 内に /usedcar/detail/AUxxxxx/index.html への a
     detail_links = tree.xpath('//a[contains(@href, "/usedcar/detail/AU") and contains(@href, "index.html")]')
     seen_ids = set()
@@ -272,7 +266,7 @@ def parse_cars_carsensor(html: str) -> List[CarRecord]:
             card_html = lhtml.tostring(card_node, encoding='unicode')
         except Exception:
             card_html = None
-
+        
         # BeautifulSoup再解析で柔軟抽出
         card_bs = BeautifulSoup(card_html, 'lxml') if card_html else None
         name = None
@@ -287,7 +281,7 @@ def parse_cars_carsensor(html: str) -> List[CarRecord]:
                         name = cand
                         break
         name = _fw_to_hw(name)
-
+        
         # 価格: 支払総額 を優先。『支払総額』の近くの数値
         price_text = None
         if card_bs:
@@ -305,7 +299,7 @@ def parse_cars_carsensor(html: str) -> List[CarRecord]:
                     if '万' in txt and _re_price_man.search(txt):
                         price_text = txt
                         break
-
+        
         # スペック行(年式/走行距離/修復歴/排気量/ミッション)を li 群から抽出
         year_text = mileage_text = repair_text = engine_text = mission_text = bodytype_text = None
         if card_bs:
@@ -324,7 +318,7 @@ def parse_cars_carsensor(html: str) -> List[CarRecord]:
                     mission_text = t
                 elif bodytype_text is None and any(k in t for k in ('SUV', 'バン', 'ワゴン', 'セダン', 'ハッチバック', 'ミニバン', 'トラック', 'クーペ')):
                     bodytype_text = t
-
+        
         # ロケーション: 店舗所在地 (都/道/府/県 を含む部分)
         location_text = None
         if card_bs:
@@ -333,34 +327,21 @@ def parse_cars_carsensor(html: str) -> List[CarRecord]:
                 if 2 <= len(txt) <= 40 and any(p in txt for p in ('県', '府', '都', '道')):
                     location_text = txt
                     break
-
+        
         record = CarRecord(
-            id=_sanitize_text(car_id) or car_id,
-            name=_sanitize_text(name),
-            price=_norm_price(price_text),
-            year=_norm_year(year_text),
-            rd=_norm_mileage(mileage_text),
-            engine=_norm_engine(engine_text),
-            color=None,
-            mission2=_sanitize_text(_clean(mission_text)),
-            bodytype=_sanitize_text(_clean(bodytype_text)),
-            repair=_sanitize_text(_clean(repair_text)),
-            location=_sanitize_text(_clean(location_text)),
-            source=card_html,
-            url=_sanitize_text(href if href.startswith('http') else f"https://www.carsensor.net{href}"),
-            raw={
-                'price_text': _sanitize_text(price_text),
-                'year_text': _sanitize_text(year_text),
-                'mileage_text': _sanitize_text(mileage_text),
-                'engine_text': _sanitize_text(engine_text),
-                'mission_text': _sanitize_text(mission_text),
-                'repair_text': _sanitize_text(repair_text),
-                'bodytype_text': _sanitize_text(bodytype_text),
-                'location_text': _sanitize_text(location_text),
-                'href': _sanitize_text(href),
-                'extraction': 'heuristic'
-            }
-        )
+            id=_sanitize_text(car_id) or car_id, name=_sanitize_text(name), price=_norm_price(price_text), year=_norm_year(year_text), rd=_norm_mileage(mileage_text), engine=_norm_engine(engine_text), color=None, mission2=_sanitize_text(_clean(mission_text)), bodytype=_sanitize_text(_clean(bodytype_text)), repair=_sanitize_text(_clean(repair_text)), location=_sanitize_text(
+                _clean(location_text)), source=card_html, url=_sanitize_text(href if href.startswith('http') else f"https://www.carsensor.net{href}"), raw={
+                    'price_text': _sanitize_text(price_text),
+                    'year_text': _sanitize_text(year_text),
+                    'mileage_text': _sanitize_text(mileage_text),
+                    'engine_text': _sanitize_text(engine_text),
+                    'mission_text': _sanitize_text(mission_text),
+                    'repair_text': _sanitize_text(repair_text),
+                    'bodytype_text': _sanitize_text(bodytype_text),
+                    'location_text': _sanitize_text(location_text),
+                    'href': _sanitize_text(href),
+                    'extraction': 'heuristic'
+                })
         records.append(record)
     log.debug(f"parse_cars_carsensor records={len(records)}")
     return records
@@ -404,7 +385,7 @@ def get_next_page_url_carsensor(html: str, current_url: str) -> Optional[str]:
                     return href if href.startswith('http') else f"https://www.carsensor.net{href}"
     except Exception:
         pass
-
+    
     # indexN.html リンク一覧
     links = tree.xpath('//a[@href]')
     indexes = []
@@ -466,7 +447,7 @@ def parse_car_detail(html: str) -> dict[str, Optional[str]]:
         tree = lhtml.fromstring(html)
     except Exception:
         return {}
-
+    
     def xp_text(xp: str, join_children: bool = True) -> Optional[str]:
         try:
             nodes = tree.xpath(xp)
@@ -485,14 +466,14 @@ def parse_car_detail(html: str) -> dict[str, Optional[str]]:
         except Exception:
             return None
         return None
-
+    
     # option span 抽出後、name は span 部分を除去
     option_raw = xp_text('/html/body/div[1]/div[2]/main/section/h1/span')
     name_full = xp_text('/html/body/div[1]/div[2]/main/section/h1')
     name_val = name_full
     if option_raw and name_full and option_raw in name_full:
         name_val = _sanitize_detail_text(name_full.replace(option_raw, ''))
-
+    
     detail = {
         'name': name_val,
         'option': option_raw,

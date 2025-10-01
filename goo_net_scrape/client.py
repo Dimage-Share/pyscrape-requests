@@ -8,7 +8,12 @@ from pathlib import Path
 
 import requests
 from requests.adapters import HTTPAdapter, Retry
-
+from datetime import datetime
+try:
+    # app.db may not always be importable at early bootstrap; guard it
+    from app.db import get_connection
+except Exception:  # pragma: no cover
+    get_connection = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -126,29 +131,125 @@ class GooNetClient:
             seen.add(cn)
             cand_list.append(c)
         
-        text = None
-        detected = None
+        def score_text(s: str) -> float:
+            if not s:
+                return 0.0
+            total = len(s)
+            if total == 0:
+                return 0.0
+            jp = 0
+            repl = s.count('\ufffd')
+            for ch in s:
+                code = ord(ch)
+                # Hiragana
+                if 0x3040 <= code <= 0x309F:
+                    jp += 1
+                # Katakana (basic + phonetic extensions)
+                elif 0x30A0 <= code <= 0x30FF or 0x31F0 <= code <= 0x31FF:
+                    jp += 1
+                # CJK Unified Ideographs (a broad range; may include Chinese but acceptable heuristic)
+                elif 0x4E00 <= code <= 0x9FFF:
+                    jp += 1
+            ratio = jp / total
+            # penalty for replacement chars or too many ASCII only when we expect Japanese
+            penalty = 0.0
+            if repl:
+                penalty += min(0.5, repl / total)
+            return max(0.0, ratio - penalty)
+        
+        best = {
+            'encoding': None,
+            'text': None,
+            'score': -1.0,
+        }
+        tried = []
         for enc in cand_list:
             try:
-                text = content_bytes.decode(enc, errors='strict')
-                detected = enc
-                break
+                candidate_text = content_bytes.decode(enc, errors='strict')
             except (LookupError, UnicodeDecodeError):
                 continue
+            s = score_text(candidate_text)
+            tried.append((enc, s))
+            if s > best['score']:
+                best.update({
+                    'encoding': enc,
+                    'text': candidate_text,
+                    'score': s
+                })
         
-        if text is None:
-            # nothing decoded strictly; fallback to first candidate with replace to avoid failure
+        if best['text'] is None:
+            # fallback path identical to prior implementation
             fallback_enc = cand_list[0] if cand_list else 'utf-8'
-            logger.warning('Encoding autodetect failed; falling back to %s with replace', fallback_enc)
+            logger.warning('Encoding autodetect failed (scoring stage); falling back to %s with replace', fallback_enc)
             try:
-                text = content_bytes.decode(fallback_enc, errors='replace')
-                detected = fallback_enc
+                best['text'] = content_bytes.decode(fallback_enc, errors='replace')
+                best['encoding'] = fallback_enc
             except Exception:
-                text = content_bytes.decode('utf-8', errors='replace')
-                detected = 'utf-8'
+                best['text'] = content_bytes.decode('utf-8', errors='replace')
+                best['encoding'] = 'utf-8'
+            best['score'] = score_text(best['text'])
         
-        logger.debug('Decoded HTTP response using encoding=%s (candidates=%s) for url=%s', detected, cand_list, resp.url)
-        return text
+        tried_sorted = sorted(tried, key=lambda x: x[1], reverse=True)
+        logger.debug('Decoded HTTP response using encoding=%s score=%.4f candidates_scored=%s url=%s', best['encoding'], best['score'], tried_sorted[:5], resp.url)
+        # Persist encoding detection (best and top scores) if DB available
+        if get_connection and best.get('encoding'):
+            try:
+                conn = get_connection()
+                cur = conn.cursor()
+                # create table if not exists (lightweight)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS encoding_log (
+                        id INTEGER PRIMARY KEY AUTO_INCREMENT,
+                        site VARCHAR(32),
+                        url TEXT,
+                        chosen_encoding VARCHAR(64),
+                        score DOUBLE,
+                        top_candidates TEXT,
+                        created_at DATETIME,
+                        KEY idx_site_created (site, created_at)
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+                    """)
+                # SQLite compatibility (AUTO_INCREMENT unsupported) -> fallback create
+            except Exception:
+                try:
+                    # second attempt for sqlite variant
+                    cur.execute("""
+                        CREATE TABLE IF NOT EXISTS encoding_log (
+                            id INTEGER PRIMARY KEY,
+                            site TEXT,
+                            url TEXT,
+                            chosen_encoding TEXT,
+                            score REAL,
+                            top_candidates TEXT,
+                            created_at TEXT
+                        )
+                        """)
+                except Exception:  # pragma: no cover
+                    pass
+            try:
+                top_serial = ','.join([f"{e}:{s:.3f}" for e, s in tried_sorted[:5]])
+                insert_sql = ("INSERT INTO encoding_log (site,url,chosen_encoding,score,top_candidates,created_at) VALUES (%s,%s,%s,%s,%s,%s)")
+                params = ('goo', resp.url, best['encoding'], float(best['score']), top_serial, datetime.utcnow())
+                try:
+                    cur.execute(insert_sql, params)
+                except Exception:
+                    # sqlite named style fallback
+                    cur.execute(
+                        "INSERT INTO encoding_log (site,url,chosen_encoding,score,top_candidates,created_at) VALUES (?,?,?,?,?,?)",
+                        params,
+                    )
+                conn.commit()
+            except Exception:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+        return best['text']
     
     def close(self):
         self.session.close()
@@ -158,3 +259,32 @@ class GooNetClient:
     
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
+
+def cleanup_encoding_log(retention_days: int = 7) -> int:
+    """Delete old rows from encoding_log keeping recent retention_days.
+    Returns deleted row count (best effort)."""
+    if not get_connection:
+        return 0
+    try:
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute("DELETE FROM encoding_log WHERE created_at < DATE_SUB(UTC_TIMESTAMP(), INTERVAL %s DAY)", (retention_days, ))
+        except Exception:
+            # sqlite fallback
+            cur.execute("DELETE FROM encoding_log WHERE datetime(created_at) < datetime('now','-%d day')" % retention_days)
+        deleted = cur.rowcount if hasattr(cur, 'rowcount') else 0
+        conn.commit()
+        return deleted
+    except Exception:
+        try:
+            conn.rollback()  # type: ignore
+        except Exception:
+            pass
+        return 0
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass

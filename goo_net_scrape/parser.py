@@ -5,9 +5,11 @@ import re
 from lxml import html as lhtml
 
 from .models import CarRecord
+from .normalize import normalize_record_fields
 import logging
 
 from bs4 import BeautifulSoup
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,10 +32,10 @@ def parse_summary(html: str) -> Dict[str, Any]:
             meta: パースメタ情報
     """
     soup = BeautifulSoup(html, "lxml")
-
+    
     # 現時点では具体的な DOM 構造を未調査なので、暫定で代表的なリンクとテキストを拾う。
     items: List[SummaryItem] = []
-
+    
     # TODO: goo-net の各車両カード DOM を特定し適切なセレクタに置き換える。
     for a in soup.select("a")[:10]:  # 暫定で最初の10リンク
         title = (a.get_text(strip=True) or None) if a else None
@@ -41,7 +43,7 @@ def parse_summary(html: str) -> Dict[str, Any]:
         if not title and not href:
             continue
         items.append(SummaryItem(title=title, price_text=None, url=href))
-
+    
     result = {
         "items": [item.__dict__ for item in items],
         "meta": {
@@ -83,7 +85,7 @@ def get_next_page_url(html: str) -> Optional[str]:
     except Exception as e:  # noqa: BLE001
         logger.warning("get_next_page_url: HTML parse 失敗: %s", e)
         return None
-
+    
     # --- 戦略1: rel="next" ---
     try:
         rel_next = tree.xpath('//a[@rel="next" and @href]')
@@ -95,7 +97,7 @@ def get_next_page_url(html: str) -> Optional[str]:
                 return url
     except Exception:  # noqa: BLE001
         pass
-
+    
     # --- 戦略2: テキストマッチ ---
     try:
         txt_candidates = tree.xpath('//a[@href]')
@@ -105,18 +107,14 @@ def get_next_page_url(html: str) -> Optional[str]:
                 href = a.get('href')
                 if href:
                     url = _abs_url(href)
-                    logger.debug(
-                        "next page strategy=text_match text=%s url=%s", txt,
-                        url)
+                    logger.debug("next page strategy=text_match text=%s url=%s", txt, url)
                     return url
     except Exception:  # noqa: BLE001
         pass
-
+    
     # --- 戦略3: class 名に next / pagination-next ---
     try:
-        class_next = tree.xpath(
-            '//a[contains(@class, "next") or contains(@class, "pagination-next")][@href]'
-        )
+        class_next = tree.xpath('//a[contains(@class, "next") or contains(@class, "pagination-next")][@href]')
         if class_next:
             href = class_next[0].get('href')
             if href:
@@ -125,13 +123,11 @@ def get_next_page_url(html: str) -> Optional[str]:
                 return url
     except Exception:  # noqa: BLE001
         pass
-
+    
     # --- 戦略4: 現在ページ+1 数字リンク ---
     try:
         # active/current ページ番号候補
-        active_nodes = tree.xpath(
-            '//*[contains(@class,"active") or contains(@class,"current")]/a | //li[contains(@class,"active") or contains(@class,"current")]'
-        )
+        active_nodes = tree.xpath('//*[contains(@class,"active") or contains(@class,"current")]/a | //li[contains(@class,"active") or contains(@class,"current")]')
         cur_num: Optional[int] = None
         for n in active_nodes:
             txt = (n.text_content() or '').strip()
@@ -140,8 +136,7 @@ def get_next_page_url(html: str) -> Optional[str]:
                 break
         if cur_num is not None:
             target = str(cur_num + 1)
-            num_links = tree.xpath(
-                f'//a[@href and normalize-space(text())="{target}"]')
+            num_links = tree.xpath(f'//a[@href and normalize-space(text())="{target}"]')
             if num_links:
                 href = num_links[0].get('href')
                 if href:
@@ -155,7 +150,7 @@ def get_next_page_url(html: str) -> Optional[str]:
                     return url
     except Exception:  # noqa: BLE001
         pass
-
+    
     # --- 戦略5/6: 静的 XPath 群 ---
     static_xps = [NEXT_PAGE_XPATH_PRIMARY, *NEXT_PAGE_XPATH_FALLBACKS]
     for xp in static_xps:
@@ -172,7 +167,7 @@ def get_next_page_url(html: str) -> Optional[str]:
         url = _abs_url(href)
         logger.debug("next page strategy=static xp=%s url=%s", xp, url)
         return url
-
+    
     logger.debug("next page not found (all strategies failed)")
     return None
 
@@ -291,9 +286,9 @@ def parse_cars(html: str) -> List[CarRecord]:
     # lxml ツリー (XPath 用)
     tree = lhtml.fromstring(html)
     soup = BeautifulSoup(html, 'lxml')  # 既存フォールバック/名称抽出用
-
+    
     records: List[CarRecord] = []
-
+    
     # tr ノード列挙
     tr_nodes = tree.xpath('//*[@id][starts-with(@id, "tr_")]')
     # fallback: if lxml zero, try soup
@@ -314,7 +309,7 @@ def parse_cars(html: str) -> List[CarRecord]:
             # カードルート: ./div[1]
             card_candidates = tr_node.xpath('./div[1]')
             card = card_candidates[0] if card_candidates else tr_node
-
+            
             def xp_first(node, xp: str) -> Optional[str]:
                 try:
                     r = node.xpath(xp)
@@ -326,7 +321,7 @@ def parse_cars(html: str) -> List[CarRecord]:
                     return _clean(r[0].text_content())
                 except Exception:  # noqa: BLE001
                     return None
-
+            
             # 名称: td_{id} 由来 or カード内 h3
             name = None
             td_id = f"td_{car_unique_id}"
@@ -346,17 +341,16 @@ def parse_cars(html: str) -> List[CarRecord]:
                     anchor2 = card.xpath('.//h3//a')
                     if anchor2:
                         car_url = anchor2[0].get('href') or None
-
+            
             # 名称: 全角英数字を半角へ
             name = _halfwidth_alnum(name)
-
+            
             # URL を絶対化 (元が相対の場合のみ)
             if car_url and car_url.startswith('/'):
                 car_url = 'https://www.goo-net.com' + car_url
-
+            
             # 支払総額 (相対 XPath パターン候補)
-            total_price_text = xp_first(
-                card, './div[2]/div/div[2]/div[1]/div/div[1]/p[2]/em')
+            total_price_text = xp_first(card, './div[2]/div/div[2]/div[1]/div/div[1]/p[2]/em')
             if not total_price_text:
                 # フォールバック: 金額らしい em
                 cand_em = card.xpath('.//em[contains(text(),"万")]')
@@ -364,27 +358,25 @@ def parse_cars(html: str) -> List[CarRecord]:
                     total_price_text = _clean(cand_em[0].text_content())
             if not total_price_text:
                 # さらに p, span などから数値のみ抽出 (例: 288.4 だけが separate な場合)
-                cand_num = card.xpath(
-                    './/*[self::p or self::span or self::em][normalize-space(text()) and not(*)]'
-                )
+                cand_num = card.xpath('.//*[self::p or self::span or self::em][normalize-space(text()) and not(*)]')
                 for c in cand_num:
                     txt = c.text_content().strip()
                     if re_price_plain.match(txt):
                         total_price_text = txt
                         break
-
+            
             # 年式/走行距離/排気量/修復歴: spec list ul/li
             year_text = mileage_text = displacement_text = repair_text = None
             spec_ul = card.xpath('./div[2]/div/div[2]/div[2]/div[1]/ul')
             if spec_ul:
                 lis = spec_ul[0].xpath('./li')
-
+                
                 # 期待順: 1:年式 2:走行 4:排気量 5:修復歴
                 def li_text(idx: int) -> Optional[str]:
                     if 0 <= idx < len(lis):
                         return _clean(lis[idx].text_content())
                     return None
-
+                
                 year_text = li_text(0)
                 mileage_text = li_text(1)
                 displacement_text = li_text(3)
@@ -398,39 +390,31 @@ def parse_cars(html: str) -> List[CarRecord]:
                         t = li.get_text(strip=True)
                         if not t:
                             continue
-                        if year_text is None and (re_year_western.search(t)
-                                                  or re_jp_era.search(t)):
+                        if year_text is None and (re_year_western.search(t) or re_jp_era.search(t)):
                             year_text = t
                             continue
                         if mileage_text is None and 'km' in t:
                             mileage_text = t
                             continue
-                        if displacement_text is None and (
-                                'cc' in t or re_displacement_l.search(t)):
+                        if displacement_text is None and ('cc' in t or re_displacement_l.search(t)):
                             displacement_text = t
                             continue
                         if repair_text is None and '修復' in t:
                             repair_text = t
-
+            
             # 備考 (後で行配列化)
-            notes_raw = xp_first(
-                card, './div[2]/div/div[2]/div[2]/div[2]/div[2]/div[1]')
+            notes_raw = xp_first(card, './div[2]/div/div[2]/div[2]/div[2]/div[2]/div[1]')
             if not notes_raw:
-                notes_raw = xp_first(
-                    card,
-                    './div[2]/div/div[2]/div[2]/div[2]/div[1]')  # オフセット違い候補
+                notes_raw = xp_first(card, './div[2]/div/div[2]/div[2]/div[2]/div[1]')  # オフセット違い候補
             if not notes_raw:
                 # ヒューリスティック fallback (長文)
-                long_divs = sorted(
-                    {e.text_content().strip()
-                     for e in card.xpath('.//div')},
-                    key=len,
-                    reverse=True)
+                long_divs = sorted({e.text_content().strip()
+                                    for e in card.xpath('.//div')}, key=len, reverse=True)
                 for cand in long_divs:
                     if 30 < len(cand) < 400:
                         notes_raw = _clean(cand)
                         break
-
+            
             # notes_raw を行配列へ: 改行 split / 全角半角スペース除去 / 空除去
             notes_list: Optional[List[str]] = None
             color = mission = bodytype = None
@@ -448,14 +432,12 @@ def parse_cars(html: str) -> List[CarRecord]:
                         mission = parts[1]
                     if len(parts) > 2:
                         bodytype = parts[2]
-
+            
             # 所在地: tr 起点で ./div[3]/div/div[1]/div[1]/div/span
             location = xp_first(tr_node, './div[3]/div/div[1]/div[1]/div/span')
             if (not location) or len(location) > 25:
                 # 追加候補: 都道府県 + 市区 (例: 岡山県岡山市南区)
-                loc_candidates = tr_node.xpath(
-                    './/span[contains(text(),"県") or contains(text(),"府") or contains(text(),"都") or contains(text(),"道")]'
-                )
+                loc_candidates = tr_node.xpath('.//span[contains(text(),"県") or contains(text(),"府") or contains(text(),"都") or contains(text(),"道")]')
                 for lc in loc_candidates:
                     txt = lc.text_content().strip()
                     if 3 <= len(txt) <= 30:
@@ -463,18 +445,18 @@ def parse_cars(html: str) -> List[CarRecord]:
                         break
             if location and len(location) > 30:
                 location = None
-
+            
             # HTML フラグメント (Unicode 文字列化)
             try:
                 card_html = lhtml.tostring(card, encoding='unicode')
             except Exception:  # noqa: BLE001
                 card_html = None
-
+            
             # source: 連続した半角スペースは 1 個に圧縮
             if card_html:
                 card_html = re.sub(r' {2,}', ' ', card_html)
-
-            record = CarRecord(
+            
+            rec_dict = dict(
                 id=car_unique_id,
                 name=name,
                 price=_norm_price(total_price_text or ''),
@@ -500,10 +482,12 @@ def parse_cars(html: str) -> List[CarRecord]:
                     'tr_id': tr_id,
                 },
             )
+            rec_dict = normalize_record_fields(rec_dict)
+            record = CarRecord(**rec_dict)
             records.append(record)
         except Exception as e:  # noqa: BLE001
             logger.warning("車両抽出失敗 tr_id=%s error=%s", tr_id, e)
             continue
-
+    
     logger.debug("parse_cars records=%d", len(records))
     return records
