@@ -51,25 +51,31 @@ def find_candidates(site: str | None = None, limit: int | None = None):
         # Use explicit cursor to support both sqlite3 and pymysql Connection objects
         cur = conn.cursor()
         if site:
-            cur.execute("SELECT site,id,url,manufacturer,name,mission1,bodytype FROM listing WHERE site=%s ORDER BY site,id LIMIT %s", (site, limit or 1000000))
+            cur.execute("SELECT site,id,url,manufacturer,name,mission1,mission2,bodytype,repair,location FROM listing WHERE site=%s ORDER BY site,id LIMIT %s", (site, limit or 1000000))
         else:
-            cur.execute("SELECT site,id,url,manufacturer,name,mission1,bodytype FROM listing ORDER BY site,id LIMIT %s", (limit or 1000000, ))
+            cur.execute("SELECT site,id,url,manufacturer,name,mission1,mission2,bodytype,repair,location FROM listing ORDER BY site,id LIMIT %s", (limit or 1000000, ))
         rows = cur.fetchall()
     finally:
         conn.close()
     
     candidates = []
     for r in rows:
-        # check if url present and if suspicious text in fields
-        text_blob = ' '.join([str(r.get(k) or '') for k in ('manufacturer', 'name', 'mission1', 'bodytype')])
-        if REPLACEMENT_RE.search(text_blob):
+        # Build union of checked columns
+        cols = ('manufacturer', 'name', 'mission1', 'mission2', 'bodytype', 'repair', 'location')
+        garbled_cols = []
+        for c in cols:
+            v = r.get(c)
+            if isinstance(v, str) and REPLACEMENT_RE.search(v):
+                garbled_cols.append(c)
+        if garbled_cols:
+            r['_garbled_cols'] = garbled_cols
             candidates.append(r)
-        elif limit and len(candidates) >= limit:
-            break
+            if limit and len(candidates) >= limit:
+                break
     return candidates
 
 
-def refresh_for_goo(row, client, commit: bool = False, delay: float = 0.5):
+def refresh_for_goo(row, client, commit: bool = False, delay: float = 0.5, verbose: bool = False):
     url = row.get('url')
     if not url:
         return False, 'no url'
@@ -88,8 +94,17 @@ def refresh_for_goo(row, client, commit: bool = False, delay: float = 0.5):
         # try to find matching record by id
         for rec in records:
             if rec.id == row['id']:
+                if verbose:
+                    before = {
+                        k: row.get(k)
+                        for k in row.get('_garbled_cols', [])
+                    }
+                    after = {
+                        k: getattr(rec, k if k != 'mission2' else 'mission2', None)
+                        for k in row.get('_garbled_cols', [])
+                    }
+                    print(f"DIFF id={row['id']} cols={row.get('_garbled_cols')} BEFORE={before} AFTER={after}")
                 if commit:
-                    # write back via bulk_insert_listing with same site
                     from app.db.mysql import bulk_insert_listing
                     bulk_insert_listing([rec], site=row['site'])
                 return True, rec
@@ -106,10 +121,37 @@ def main():
     p.add_argument('--limit', type=int, help='max candidates to process')
     p.add_argument('--commit', action='store_true', help='apply updates to DB')
     p.add_argument('--delay', type=float, default=0.5, help='delay between requests')
+    p.add_argument('--ids', help='comma-separated explicit listing IDs to refresh (overrides candidate scan)')
+    p.add_argument('--verbose', action='store_true', help='print before/after diffs for garbled columns')
+    p.add_argument('--list', action='store_true', help='only list garbled candidate IDs and exit')
     args = p.parse_args()
     
-    candidates = find_candidates(site=args.site, limit=args.limit)
+    if args.ids:
+        id_list = [i.strip() for i in args.ids.split(',') if i.strip()]
+        # Fetch rows for given ids
+        conn = get_connection()
+        try:
+            cur = conn.cursor()
+            # Use IN clause in chunks
+            candidates = []
+            chunk = 100
+            for i in range(0, len(id_list), chunk):
+                part = id_list[i:i + chunk]
+                placeholders = ','.join(['%s'] * len(part))
+                cur.execute(f"SELECT site,id,url,manufacturer,name,mission1,mission2,bodytype,repair,location FROM listing WHERE id IN ({placeholders})", part)
+                for r in cur.fetchall():
+                    r['_garbled_cols'] = []  # unknown here; will compute quickly
+                    candidates.append(r)
+        finally:
+            conn.close()
+    else:
+        candidates = find_candidates(site=args.site, limit=args.limit)
     print('Found candidates:', len(candidates))
+    if args.list:
+        print('Candidate IDs:')
+        for r in candidates:
+            print(r['id'], ','.join(r.get('_garbled_cols', [])))
+        return
     if not candidates:
         return
     
@@ -125,7 +167,7 @@ def main():
     try:
         processed = 0
         for row in candidates:
-            ok, res = refresh_for_goo(row, client, commit=args.commit, delay=args.delay)
+            ok, res = refresh_for_goo(row, client, commit=args.commit, delay=args.delay, verbose=args.verbose)
             processed += 1
             print(f"[{processed}/{len(candidates)}] id={row['id']} site={row['site']} -> {ok} {res if not ok else ''}")
     finally:
