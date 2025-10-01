@@ -46,32 +46,32 @@ def register(bp):
         }
         # wd, seat, fuel, handle: 部分一致 or null
         if filters['wd']:
-            where.append('(wd LIKE :wd OR wd IS NULL OR wd = "")')
+            where.append('(`wd` LIKE %(wd)s OR `wd` IS NULL OR `wd` = "")')
             params['wd'] = f"%{filters['wd']}%"
         if filters['seat']:
-            where.append('seat = :seat')
+            where.append('`seat` = %(seat)s')
             params['seat'] = filters['seat']
         if filters['door'] != '':
-            where.append('door = :door')
+            where.append('`door` = %(door)s')
             params['door'] = filters['door']
         if filters['fuel']:
-            where.append('(fuel LIKE :fuel OR fuel IS NULL OR fuel = "")')
+            where.append('(`fuel` LIKE %(fuel)s OR `fuel` IS NULL OR `fuel` = "")')
             params['fuel'] = f"%{filters['fuel']}%"
         if filters['handle']:
-            where.append('(handle LIKE :handle OR handle IS NULL OR handle = "")')
+            where.append('(`handle` LIKE %(handle)s OR `handle` IS NULL OR `handle` = "")')
             params['handle'] = f"%{filters['handle']}%"
         # jc08: 入力値以上またはnull
         if filters['jc08']:
             try:
                 params['jc08'] = float(filters['jc08'])
-                where.append('(CAST(jc08 AS FLOAT) >= :jc08 OR jc08 IS NULL OR jc08 = "")')
+                where.append('(CAST(`jc08` AS FLOAT) >= %(jc08)s OR `jc08` IS NULL OR `jc08` = "")')
             except Exception:
                 flash('JC08は数値で入力してください', 'error')
         # engine: 選択した値以上の排気量
         if filters.get('engine'):
             try:
                 params['engine'] = int(filters['engine'])
-                where.append('(engine >= :engine OR engine IS NULL OR engine = "")')
+                where.append('(`engine` >= %(engine)s OR `engine` IS NULL OR `engine` = "")')
             except Exception:
                 flash('排気量は整数で入力してください', 'error')
         
@@ -100,52 +100,52 @@ def register(bp):
             qcols = ['manufacturer', 'name', 'mission1', 'mission2', 'bodytype', 'repair', 'location', 'option', 'category', 'wd', 'fuel', 'handle', 'url', 'raw_json']
             like_clauses = []
             for c in qcols:
-                like_clauses.append(f"{c} LIKE :q")
+                like_clauses.append(f"`{c}` LIKE %(q)s")
             where.append('(' + ' OR '.join(like_clauses) + ')')
             params['q'] = f"%{q}%"
         if filters['manufacturer']:
-            where.append('manufacturer = :manufacturer')
+            where.append('`manufacturer` = %(manufacturer)s')
             params['manufacturer'] = filters['manufacturer']
         if filters['name']:
-            where.append('name = :name')
+            where.append('`name` = %(name)s')
             params['name'] = filters['name']
         if filters['mission1']:
-            where.append('mission1 = :mission1')
+            where.append('`mission1` = %(mission1)s')
             params['mission1'] = filters['mission1']
         if filters['mission2']:
-            where.append('mission2 = :mission2')
+            where.append('`mission2` = %(mission2)s')
             params['mission2'] = filters['mission2']
         if filters['category']:
-            where.append('category = :category')
+            where.append('`category` = %(category)s')
             params['category'] = filters['category']
         if filters['bodytype']:
-            where.append('bodytype = :bodytype')
+            where.append('`bodytype` = %(bodytype)s')
             params['bodytype'] = filters['bodytype']
         if filters['repair']:
-            where.append('repair = :repair')
+            where.append('`repair` = %(repair)s')
             params['repair'] = filters['repair']
         if filters['location']:
-            where.append('location = :location')
+            where.append('`location` = %(location)s')
             params['location'] = filters['location']
         if filters['door']:
-            where.append('door = :door')
+            where.append('`door` = %(door)s')
             params['door'] = filters['door']
         if filters['year']:
             try:
                 params['year'] = int(filters['year'])
-                where.append('(year >= :year OR year IS NULL)')
+                where.append('(`year` >= %(year)s OR `year` IS NULL)')
             except Exception:
                 flash('年式は整数で入力してください', 'error')
         if filters['price_min']:
             try:
                 params['price_min'] = int(filters['price_min'])
-                where.append('price >= :price_min')
+                where.append('`price` >= %(price_min)s')
             except Exception:
                 flash('price_minは整数', 'error')
         if filters['price_max']:
             try:
                 params['price_max'] = int(filters['price_max'])
-                where.append('price <= :price_max')
+                where.append('`price` <= %(price_max)s')
             except Exception:
                 flash('price_maxは整数', 'error')
         select_cols = ['id', 'manufacturer', 'name', 'price', 'year', 'rd', 'engine', 'mission1', 'mission2', 'bodytype', 'repair', 'location', 'wd', 'seat', 'door', 'fuel', 'handle', 'jc08', 'option', 'category', 'url']
@@ -225,7 +225,7 @@ def register(bp):
             def _vals(col: str):
                 with conn.cursor() as c2:
                     # Use parameter-less f-string; col is from whitelist usage in this file
-                    c2.execute(f"SELECT DISTINCT `{col}` FROM goo WHERE `{col}` IS NOT NULL AND `{col}` != '' ORDER BY `{col}` LIMIT 200")
+                    c2.execute(f"SELECT DISTINCT `{col}` FROM listing WHERE `{col}` IS NOT NULL AND `{col}` != '' ORDER BY `{col}` LIMIT 200")
                     fetched = c2.fetchall()
                     vals = []
                     for v in fetched:
@@ -257,7 +257,7 @@ def register(bp):
             repairs = _vals('repair')
             locations = _vals('location')
             with conn.cursor() as cy:
-                cy.execute('SELECT DISTINCT year FROM goo WHERE year IS NOT NULL ORDER BY year DESC LIMIT 50')
+                cy.execute('SELECT DISTINCT year FROM listing WHERE year IS NOT NULL ORDER BY year DESC LIMIT 50')
                 fetched_years = cy.fetchall()
                 years = []
                 for r in fetched_years:
@@ -297,8 +297,41 @@ def register(bp):
                 pass
         files = _list_summary_files()
         state = current_app.extensions.get('scrape_state') or {}
+        # fetch listing counts grouped by site (e.g. 'goo', 'carsensor')
+        listing_counts = {
+            'total': 0,
+            'goo': 0,
+            'carsensor': 0
+        }
+        try:
+            from core.db import get_connection as _get_conn
+            conn2 = _get_conn()
+            try:
+                with conn2.cursor() as cc:
+                    cc.execute('SELECT `site`, COUNT(*) AS cnt FROM listing GROUP BY `site`')
+                    rows_cnt = cc.fetchall()
+                    for r in rows_cnt or []:
+                        if isinstance(r, dict):
+                            site = r.get('site')
+                            cnt = int(r.get('cnt') or 0)
+                        else:
+                            site = r[0]
+                            cnt = int(r[1] or 0)
+                        listing_counts[site] = cnt
+                        listing_counts['total'] += cnt
+            finally:
+                try:
+                    conn2.close()
+                except Exception:
+                    pass
+        except Exception:
+            # keep defaults on any error
+            pass
+        
+        # convert listing_counts dict into list of (site, count) pairs sorted by count desc for template
+        listing_counts_list = sorted([(k, v) for k, v in listing_counts.items() if k != 'total'], key=lambda x: x[1], reverse=True)
         return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, manufacturers=manufacturers, names=names, mission1s=mission1s, mission2s=mission2s, repairs=repairs, locations=locations, years=years, categories=categories, wds=wds, seats=seats, doors=doors, fuels=fuels, handles=handles, engines=engines, price_options=price_options,
-                               sort=sort, dir=dir_, state=state)
+                               sort=sort, dir=dir_, state=state, listing_counts=listing_counts, listing_counts_list=listing_counts_list)
     
     @bp.route('/files/<name>')
     def show_file(name: str):

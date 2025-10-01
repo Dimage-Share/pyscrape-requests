@@ -2,6 +2,8 @@ from __future__ import annotations
 from flask import Blueprint, current_app, render_template, redirect, url_for, send_file, request, flash
 from pathlib import Path
 import os
+from core import logger
+
 
 bp = Blueprint('main', __name__)
 
@@ -96,7 +98,7 @@ def index():
     q = request.args.get('q', '').strip()
     if q:
         # search in text-like columns (use LIKE)
-        qcols = ['manufacturer','name','mission1','mission2','bodytype','repair','location','option','category','wd','fuel','handle','url','raw_json']
+        qcols = ['manufacturer', 'name', 'mission1', 'mission2', 'bodytype', 'repair', 'location', 'option', 'category', 'wd', 'fuel', 'handle', 'url', 'raw_json']
         like_clauses = []
         for c in qcols:
             like_clauses.append(f"{c} LIKE :q")
@@ -159,6 +161,12 @@ def index():
     conn = get_connection()
     try:
         with conn:
+            # Log the SQL and params at DEBUG level for troubleshooting. Do not let logging break the request.
+            try:
+                logger.Logger.bind(__name__).debug("Search SQL: %s params=%s", sql, params)
+            except Exception:
+                pass
+            
             cur = conn.execute(sql, params)
             rows = [dict(zip([c[0] for c in cur.description], r)) for r in cur.fetchall()]
             
@@ -194,7 +202,8 @@ def index():
         conn.close()
     files = _list_summary_files()
     state = current_app.extensions.get('scrape_state') or {}
-    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, manufacturers=manufacturers, names=names, mission1s=mission1s, mission2s=mission2s, repairs=repairs, locations=locations, years=years, categories=categories, wds=wds, seats=seats, doors=doors, fuels=fuels, handles=handles, engines=engines, price_options=price_options, sort=sort, dir=dir_, state=state)
+    return render_template('index.html', files=files, rows=rows, filters=filters, bodytypes=bodytypes, manufacturers=manufacturers, names=names, mission1s=mission1s, mission2s=mission2s, repairs=repairs, locations=locations, years=years, categories=categories, wds=wds, seats=seats, doors=doors, fuels=fuels, handles=handles, engines=engines, price_options=price_options, sort=sort,
+                           dir=dir_, state=state)
 
 
 @bp.route('/scrape', methods=['POST'])
@@ -243,6 +252,7 @@ def download_file(name: str):
 def pivot():
     return render_template('pivot.html')
 
+
 @bp.route('/pivot/columns')
 def pivot_columns():
     import sqlite3
@@ -252,9 +262,12 @@ def pivot_columns():
         with conn:
             cur = conn.execute('PRAGMA table_info(car)')
             cols = [r[1] for r in cur.fetchall()]
-        return {'columns': cols} if 'columns' in request.args else cols
+        return {
+            'columns': cols
+        } if 'columns' in request.args else cols
     finally:
         conn.close()
+
 
 @bp.route('/pivot/data')
 def pivot_data():
@@ -262,7 +275,7 @@ def pivot_data():
     col = request.args.get('col')
     row = request.args.get('row')
     val = request.args.get('val')
-    agg = request.args.get('agg','count')
+    agg = request.args.get('agg', 'count')
     # フィルタ
     filters = []
     params = {}
@@ -272,21 +285,23 @@ def pivot_data():
     try:
         with conn:
             # 動的フィルタ
-            for k,v in request.args.items():
+            for k, v in request.args.items():
                 if k.startswith('filter_') and v:
                     colf = k[7:]
                     filters.append(f'{colf} = :{colf}')
                     params[colf] = v
             where = ('WHERE ' + ' AND '.join(filters)) if filters else ''
             # SQL生成
-            if agg=='count':
+            if agg == 'count':
                 sql = f'SELECT {row},{col},COUNT(*) FROM car {where} GROUP BY {row},{col}'
-            elif agg=='sum':
+            elif agg == 'sum':
                 sql = f'SELECT {row},{col},SUM({val}) FROM car {where} GROUP BY {row},{col}'
-            elif agg=='avg':
+            elif agg == 'avg':
                 sql = f'SELECT {row},{col},AVG({val}) FROM car {where} GROUP BY {row},{col}'
             else:
-                return {'error':'invalid agg'}
+                return {
+                    'error': 'invalid agg'
+                }
             cur = conn.execute(sql, params)
             data = cur.fetchall()
             # 軸値抽出
@@ -303,6 +318,11 @@ def pivot_data():
                 table[i][j] = v
                 if isinstance(v, (int, float)) and v > maxv:
                     maxv = v
-            return {'rows':rows,'cols':cols,'table':table,'max':maxv}
+            return {
+                'rows': rows,
+                'cols': cols,
+                'table': table,
+                'max': maxv
+            }
     finally:
         conn.close()

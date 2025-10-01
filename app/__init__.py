@@ -3,8 +3,6 @@ from flask import Flask
 from pathlib import Path
 from typing import Any, Dict
 
-from core.scrape import Scrape
-
 
 def create_app(config: Dict[str, Any] | None = None) -> Flask:
     # Explicit template folder path (project root/templates)
@@ -17,6 +15,9 @@ def create_app(config: Dict[str, Any] | None = None) -> Flask:
         print(f"[INFO] template dir: {template_dir}")
     if config:
         app.config.update(config)
+    
+    # Lazy import to avoid circular import at module import time
+    from core.scrape import Scrape
     
     # Lazy scraper instance (simple singleton in app context)
     scraper = Scrape()

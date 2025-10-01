@@ -1,17 +1,9 @@
 """Core scraping package (post-migration).
 
-Public entrypoints:
-  - Scrape: high-level orchestrator
-  - GooNetClient, parse_summary, parse_cars
-
-Legacy compatibility: external code should migrate imports from
-`goo_net_scrape.*` to `core.*`. A thin compatibility layer will remain
-until final removal.
+This package intentionally avoids importing submodules at package-import
+time to prevent circular import problems in utility scripts. Import
+submodules explicitly (for example ``from core.scrape import Scrape``)
+when you need them.
 """
-
-from .scrape import Scrape  # noqa: F401
-from .client import GooNetClient  # noqa: F401
-from .parser import parse_summary, parse_cars  # noqa: F401
-
 
 __all__ = ["Scrape", "GooNetClient", "parse_summary", "parse_cars"]

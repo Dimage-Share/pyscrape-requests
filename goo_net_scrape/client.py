@@ -94,8 +94,61 @@ class GooNetClient:
         # detailed fetch log only at DEBUG (INFO reserved for page boundaries)
         logger.debug("HTTP GET done url=%s final=%s time=%.2fs status=%s", url, resp.url, elapsed, resp.status_code)
         resp.raise_for_status()
-        # レスポンス encoding 判定 (goo-net は euc-jp/shift_jis の可能性も考慮) -> requests が自動判定
-        return resp.text
+        # Better encoding detection: try a list of candidate encodings one-by-one
+        content_bytes = resp.content
+        candidates = []
+        if resp.encoding:
+            candidates.append(resp.encoding)
+        # Try BeautifulSoup detection from meta tags
+        try:
+            from bs4 import BeautifulSoup as _BS
+            
+            bs = _BS(content_bytes, 'lxml')
+            if getattr(bs, 'original_encoding', None):
+                candidates.append(bs.original_encoding)
+        except Exception:
+            pass
+        if resp.apparent_encoding:
+            candidates.append(resp.apparent_encoding)
+        
+        # Common Japanese encodings as last resort
+        candidates.extend(['utf-8', 'cp932', 'shift_jis', 'euc_jp', 'iso-2022-jp'])
+        
+        # normalize and dedupe while preserving order
+        seen = set()
+        cand_list = []
+        for c in candidates:
+            if not c:
+                continue
+            cn = str(c).lower()
+            if cn in seen:
+                continue
+            seen.add(cn)
+            cand_list.append(c)
+        
+        text = None
+        detected = None
+        for enc in cand_list:
+            try:
+                text = content_bytes.decode(enc, errors='strict')
+                detected = enc
+                break
+            except (LookupError, UnicodeDecodeError):
+                continue
+        
+        if text is None:
+            # nothing decoded strictly; fallback to first candidate with replace to avoid failure
+            fallback_enc = cand_list[0] if cand_list else 'utf-8'
+            logger.warning('Encoding autodetect failed; falling back to %s with replace', fallback_enc)
+            try:
+                text = content_bytes.decode(fallback_enc, errors='replace')
+                detected = fallback_enc
+            except Exception:
+                text = content_bytes.decode('utf-8', errors='replace')
+                detected = 'utf-8'
+        
+        logger.debug('Decoded HTTP response using encoding=%s (candidates=%s) for url=%s', detected, cand_list, resp.url)
+        return text
     
     def close(self):
         self.session.close()

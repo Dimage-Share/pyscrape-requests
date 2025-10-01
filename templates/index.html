@@ -133,6 +133,14 @@
 		<section>
 			<div style="display:flex; justify-content:space-between; align-items:center;">
 				<h1>検索結果</h1>
+				<div style="margin-left:16px;color:#fff;font-weight:600; display:flex; gap:8px; align-items:center;">
+					<div>総件数: <span style="color:#0b1220; background:#fff; padding:4px 8px; border-radius:6px; margin-left:6px;">{{ listing_counts.total }}</span></div>
+					{% if listing_counts_list %}
+						{% for site, cnt in listing_counts_list %}
+							<div style="font-size:0.9rem; color:rgba(255,255,255,0.9);">{{ site }}: <span style="background:#fff;color:#0b1220;padding:3px 6px;border-radius:6px;margin-left:6px;">{{ cnt }}</span></div>
+						{% endfor %}
+					{% endif %}
+				</div>
 				<a href="/pivot" class="btn-link btn-secondary" style="margin-left:auto;">pivot</a>
 			</div>
 			{% with messages = get_flashed_messages(with_categories=true) %}
