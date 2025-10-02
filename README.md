@@ -219,6 +219,12 @@ python .\scripts\run_scrapes_segmented.py --site goo --pages 300 --batch-size 50
 
 # 全リセットして両サイト再取得
 python .\scripts\reset_and_rescrape.py --pages 300 --batch 50 --delay 1 --confirm
+
+# 各ページのダンプ(JSON + full HTML)を保存 (./dumps/site_pageN.{json,html})
+python .\scripts\run_scrapes_segmented.py --site carsensor --pages 20 --batch-size 10 --dump-dir dumps --confirm
+
+# HTML は不要で JSON のみ残したい場合
+python .\scripts\run_scrapes_segmented.py --site goo --pages 10 --batch-size 5 --dump-dir dumps --no-full-html --confirm
 ```
 
 中断耐性: CarSensor は flush 時点まで `listing` に永続化済みのため再開時に `--resume` (CarSensorセグメントスクリプト) を活用可能です。

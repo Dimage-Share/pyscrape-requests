@@ -20,9 +20,8 @@ def register(bp):
     
     @bp.route('/')
     def index():
-        # Build SQL dynamically
-        where = []
-        params = {}
+        # NOTE: ここで再初期化すると直前までに積み上げた wd/seat/engine/jc08 などの条件が失われるため再初期化しない
+        # (バグ修正: where/params のリセットを削除)
         # Collect filter parameters from query string
         filters = {
             'manufacturer': request.args.get('manufacturer') or '',
@@ -148,9 +147,10 @@ def register(bp):
                 where.append('`price` <= %(price_max)s')
             except Exception:
                 flash('price_maxは整数', 'error')
-        select_cols = ['id', 'manufacturer', 'name', 'price', 'year', 'rd', 'engine', 'mission1', 'mission2', 'bodytype', 'repair', 'location', 'wd', 'seat', 'door', 'fuel', 'handle', 'jc08', 'option', 'category', 'url']
+        # listing へ統一 (site カラムも取得)
+        select_cols = ['site', 'id', 'manufacturer', 'name', 'price', 'year', 'rd', 'engine', 'mission1', 'mission2', 'bodytype', 'repair', 'location', 'wd', 'seat', 'door', 'fuel', 'handle', 'jc08', 'option', 'category', 'url']
         cols_sql = ','.join([f'`{c}`' for c in select_cols])
-        sql = f'SELECT {cols_sql} FROM car'
+        sql = f'SELECT {cols_sql} FROM listing'
         if where:
             sql += ' WHERE ' + ' AND '.join(where)
         # Quote order-by columns as well
@@ -159,7 +159,13 @@ def register(bp):
             secondary_order = ', `price` ASC'
         if sort != 'year':
             secondary_order += ', `year` DESC'
-        sql += f' ORDER BY `{sort}` {dir_.upper()}{secondary_order} LIMIT 300'
+        sql += f' ORDER BY `{sort}` {dir_.upper()}{secondary_order} LIMIT 1000'
+        # Log query
+        try:
+            from core import logger as _l
+            _l.Logger.bind(__name__).info(f"SearchSQL alt: {sql} params={params}")
+        except Exception:
+            pass
         
         # Fetch distinct values for dropdowns
         from core.db import get_connection

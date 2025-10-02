@@ -12,15 +12,39 @@ def register(bp):
     def pivot_columns():
         from core.db import get_connection
         conn = get_connection()
+        cols = []
         try:
-            with conn:
-                cur = conn.execute('PRAGMA table_info(car)')
-                cols = [r[1] for r in cur.fetchall()]
+            with conn.cursor() as cur:
+                # MySQL / SQLite 両対応: まず SHOW COLUMNS を試し、失敗なら PRAGMA
+                try:
+                    cur.execute('SHOW COLUMNS FROM listing')
+                    rows = cur.fetchall()
+                    for r in rows:
+                        # pymysql DictCursor or sqlite tuple fallback
+                        if isinstance(r, dict):
+                            cols.append(r.get('Field') or r.get('field') or r.get('COLUMN_NAME'))
+                        else:
+                            cols.append(r[0])
+                except Exception:
+                    try:
+                        cur.execute('PRAGMA table_info(listing)')
+                        rows = cur.fetchall()
+                        for r in rows:
+                            if isinstance(r, dict):
+                                cols.append(r.get('name'))
+                            else:
+                                cols.append(r[1])
+                    except Exception:
+                        cols = []
+            cols = [c for c in cols if c]  # remove None
             return {
                 'columns': cols
             } if 'columns' in request.args else cols
         finally:
-            conn.close()
+            try:
+                conn.close()
+            except Exception:
+                pass
     
     @bp.route('/pivot/data')
     def pivot_data():
@@ -41,11 +65,11 @@ def register(bp):
                         params[colf] = v
                 where = ('WHERE ' + ' AND '.join(filters)) if filters else ''
                 if agg == 'count':
-                    sql = f'SELECT {row},{col},COUNT(*) FROM car {where} GROUP BY {row},{col}'
+                    sql = f'SELECT {row},{col},COUNT(*) FROM listing {where} GROUP BY {row},{col}'
                 elif agg == 'sum':
-                    sql = f'SELECT {row},{col},SUM({val}) FROM car {where} GROUP BY {row},{col}'
+                    sql = f'SELECT {row},{col},SUM({val}) FROM listing {where} GROUP BY {row},{col}'
                 elif agg == 'avg':
-                    sql = f'SELECT {row},{col},AVG({val}) FROM car {where} GROUP BY {row},{col}'
+                    sql = f'SELECT {row},{col},AVG({val}) FROM listing {where} GROUP BY {row},{col}'
                 else:
                     return {
                         'error': 'invalid agg'

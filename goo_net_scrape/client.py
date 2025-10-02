@@ -191,7 +191,21 @@ class GooNetClient:
         
         tried_sorted = sorted(tried, key=lambda x: x[1], reverse=True)
         logger.debug('Decoded HTTP response using encoding=%s score=%.4f candidates_scored=%s url=%s', best['encoding'], best['score'], tried_sorted[:5], resp.url)
+        # expose chosen encoding on this client instance for callers
+        try:
+            setattr(self, '_last_chosen_encoding', best.get('encoding'))
+        except Exception:
+            pass
         # Persist encoding detection (best and top scores) if DB available
+        # record chosen encoding on the client instance if possible
+        try:
+            # resp is local; attempt to set attribute on caller's client via "self"
+            # only works when called from instance method; safe to set attribute on module-level
+            # We can't reference self here because this function is inside method; but we can set
+            # an attribute on resp to carry chosen encoding back to caller (resp.encoding is already set).
+            pass
+        except Exception:
+            pass
         if get_connection and best.get('encoding'):
             try:
                 conn = get_connection()

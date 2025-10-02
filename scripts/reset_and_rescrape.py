@@ -42,6 +42,8 @@ def main():
     ap.add_argument('--pages', type=int, default=300)
     ap.add_argument('--batch', type=int, default=50)
     ap.add_argument('--delay', type=float, default=1.0)
+    ap.add_argument('--dump-dir', type=str, help='Dump directory for per-page JSON/HTML (optional)')
+    ap.add_argument('--no-full-html', action='store_true', help='Skip saving full HTML (JSON only)')
     ap.add_argument('--confirm', action='store_true')
     args = ap.parse_args()
     if not args.confirm:
@@ -49,10 +51,12 @@ def main():
         return
     print('Resetting listing table...')
     reset_listing()
+    full_html = not args.no_full_html
+    dump_dir = args.dump_dir
     print('Re-scraping CarSensor...')
-    run_carsensor_segmented(args.pages, args.batch, args.delay, resume=False)
+    run_carsensor_segmented(args.pages, args.batch, args.delay, resume=False, dump_dir=dump_dir, full_html=full_html)
     print('Re-scraping Goo...')
-    run_goo_segmented(args.pages, args.batch, args.delay, resume=False)
+    run_goo_segmented(args.pages, args.batch, args.delay, resume=False, dump_dir=dump_dir, full_html=full_html)
     print('All done.')
 
 

@@ -20,9 +20,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from app.db import init_db, bulk_insert_listing, get_connection  # type: ignore
+from core.dump import dump_page  # type: ignore
 from core.scrape import Scrape  # type: ignore
 from goo_net_scrape.client import GooNetClient  # type: ignore
 from goo_net_scrape import parser as goo_parser, models as goo_models  # type: ignore
+from core.encoding import decode_response  # type: ignore
 
 
 logger = logging.getLogger(__name__)
@@ -41,7 +43,7 @@ def _estimate_pages_done(site: str, avg_per_page: int = 20) -> int:
         return 0
 
 
-def run_carsensor_segmented(pages: int, batch_size: int, delay: float, resume: bool):
+def run_carsensor_segmented(pages: int, batch_size: int, delay: float, resume: bool, dump_dir: str | None, full_html: bool):
     remaining = pages
     start_page = 1
     if resume:
@@ -58,16 +60,19 @@ def run_carsensor_segmented(pages: int, batch_size: int, delay: float, resume: b
     s = Scrape(page_delay=delay)
     # Current Scrape.run does not yet accept start offset; TODO: implement skip logic if needed.
     # For now, if resume and start_page>1 we just run remaining pages naive (duplicates may be upserted)
-    s.run(remaining, {}, flush_pages=batch_size)
+    s.run(remaining, {}, flush_pages=batch_size, dump_dir=dump_dir)
 
 
-def run_goo_segmented(pages: int, batch_size: int, delay: float, resume: bool):
+def run_goo_segmented(pages: int, batch_size: int, delay: float, resume: bool, dump_dir: str | None, full_html: bool):
     init_db()
     scraped = 0
     all_records = []
     start_time = time.time()
     with GooNetClient() as client:
+        # Use the client's get_summary_page which performs encoding detection; the client
+        # exposes the last chosen encoding as _last_chosen_encoding when available.
         html = client.get_summary_page(params=None)
+        chosen = getattr(client, '_last_chosen_encoding', None)
         cars = goo_parser.parse_cars(html)
         for c in cars:
             all_records.append(c)
@@ -76,6 +81,16 @@ def run_goo_segmented(pages: int, batch_size: int, delay: float, resume: bool):
             inserted = bulk_insert_listing(all_records, site='goo')
             print(f"flush inserted={inserted} total_pages={scraped}")
             all_records.clear()
+        if dump_dir:
+            try:
+                meta = {
+                    'stage': 'initial'
+                }
+                if 'chosen' in locals() and chosen:
+                    meta['chosen_encoding'] = chosen
+                dump_page(dump_dir=Path(dump_dir), site='goo', page_number=scraped, url='page1', html=html, records=cars or [], meta=meta, write_full_html=full_html)
+            except Exception as e:
+                print(f'dump fail page=1 err={e}')
         while scraped < pages:
             time.sleep(delay)
             next_url = goo_parser.get_next_page_url(html)
@@ -83,8 +98,7 @@ def run_goo_segmented(pages: int, batch_size: int, delay: float, resume: bool):
                 print("No next page; stopping early.")
                 break
             resp = client.session.get(next_url, timeout=client.config.timeout)
-            resp.encoding = 'utf-8'
-            html = resp.text
+            html = decode_response(resp)
             cars = goo_parser.parse_cars(html)
             for c in cars:
                 all_records.append(c)
@@ -93,6 +107,16 @@ def run_goo_segmented(pages: int, batch_size: int, delay: float, resume: bool):
                 inserted = bulk_insert_listing(all_records, site='goo')
                 print(f"flush inserted={inserted} total_pages={scraped}")
                 all_records.clear()
+            if dump_dir:
+                try:
+                    meta = {
+                        'stage': 'loop'
+                    }
+                    if getattr(resp, 'encoding', None):
+                        meta['chosen_encoding'] = getattr(resp, 'encoding')
+                    dump_page(dump_dir=Path(dump_dir), site='goo', page_number=scraped, url=next_url, html=html, records=cars or [], meta=meta, write_full_html=full_html)
+                except Exception as e:
+                    print(f'dump fail page={scraped} err={e}')
     if all_records:
         inserted = bulk_insert_listing(all_records, site='goo')
         print(f"final inserted={inserted} total_pages={scraped}")
@@ -107,15 +131,18 @@ def main():
     ap.add_argument('--batch-size', type=int, default=50)
     ap.add_argument('--delay', type=float, default=1.0)
     ap.add_argument('--resume', action='store_true')
+    ap.add_argument('--dump-dir', type=str, help='Directory to dump per-page JSON/HTML (optional)')
+    ap.add_argument('--no-full-html', action='store_true', help='Only write JSON (skip full HTML file)')
     ap.add_argument('--confirm', action='store_true')
     args = ap.parse_args()
     if not args.confirm:
         print('Add --confirm to actually run (safety).')
         return
+    full_html = not args.no_full_html
     if args.site == 'carsensor':
-        run_carsensor_segmented(args.pages, args.batch_size, args.delay, args.resume)
+        run_carsensor_segmented(args.pages, args.batch_size, args.delay, args.resume, args.dump_dir, full_html)
     else:
-        run_goo_segmented(args.pages, args.batch_size, args.delay, args.resume)
+        run_goo_segmented(args.pages, args.batch_size, args.delay, args.resume, args.dump_dir, full_html)
 
 
 if __name__ == '__main__':

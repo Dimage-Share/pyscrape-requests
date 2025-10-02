@@ -57,6 +57,7 @@ def refresh_goonet(target_ids: set[str], pages: int, delay: float):
     from goo_net_scrape.client import GooNetClient
     from goo_net_scrape import parser as gparser
     from goo_net_scrape import models as gmodels
+    from core.encoding import decode_response
     refreshed = {}
     with GooNetClient() as client:
         html = client.get_summary_page(params=None)
@@ -71,8 +72,7 @@ def refresh_goonet(target_ids: set[str], pages: int, delay: float):
             if not next_url:
                 break
             resp = client.session.get(next_url, timeout=client.config.timeout)
-            resp.encoding = 'utf-8'
-            html = resp.text
+            html = decode_response(resp)
             cars = gparser.parse_cars(html)
             for c in cars:
                 if c.id in target_ids:
@@ -84,6 +84,7 @@ def refresh_goonet(target_ids: set[str], pages: int, delay: float):
 def refresh_carsensor(target_ids: set[str], pages: int, delay: float):
     from core.client import CarSensorClient
     from core.carsensor_parser import parse_cars_carsensor, get_next_page_url_carsensor
+    from core.encoding import decode_response
     refreshed = {}
     with CarSensorClient() as client:
         html = client.get_summary_page(params=None)
@@ -98,8 +99,7 @@ def refresh_carsensor(target_ids: set[str], pages: int, delay: float):
             if not next_url:
                 break
             resp = client.session.get(next_url, timeout=client.config.timeout)
-            resp.encoding = 'utf-8'
-            html = resp.text
+            html = decode_response(resp)
             cars = parse_cars_carsensor(html)
             for c in cars:
                 if c.id in target_ids:

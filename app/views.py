@@ -20,9 +20,7 @@ def _list_summary_files():
 
 @bp.route('/')
 def index():
-    # Build SQL dynamically
-    where = []
-    params = {}
+    # Build SQL dynamically (既に上で where/params を構築しているため再初期化しない)
     # Collect filter parameters from query string
     filters = {
         'manufacturer': request.args.get('manufacturer') or '',
@@ -46,34 +44,34 @@ def index():
     }
     print("[DEBUG] filters['door']:", repr(filters['door']))
     print("[DEBUG] filters['door']:", repr(filters['door']))
-    # wd, seat, fuel, handle: 部分一致 or null
+    # wd, seat, fuel, handle: 部分一致 or null (MySQL named style %(name)s)
     if filters['wd']:
-        where.append('(wd LIKE :wd OR wd IS NULL OR wd = "")')
+        where.append('(`wd` LIKE %(wd)s OR `wd` IS NULL OR `wd` = "")')
         params['wd'] = f"%{filters['wd']}%"
     if filters['seat']:
-        where.append('seat = :seat')
+        where.append('`seat` = %(seat)s')
         params['seat'] = filters['seat']
     if filters['door'] != '':
-        where.append('door = :door')
+        where.append('`door` = %(door)s')
         params['door'] = filters['door']
     if filters['fuel']:
-        where.append('(fuel LIKE :fuel OR fuel IS NULL OR fuel = "")')
+        where.append('(`fuel` LIKE %(fuel)s OR `fuel` IS NULL OR `fuel` = "")')
         params['fuel'] = f"%{filters['fuel']}%"
     if filters['handle']:
-        where.append('(handle LIKE :handle OR handle IS NULL OR handle = "")')
+        where.append('(`handle` LIKE %(handle)s OR `handle` IS NULL OR `handle` = "")')
         params['handle'] = f"%{filters['handle']}%"
     # jc08: 入力値以上またはnull
     if filters['jc08']:
         try:
             params['jc08'] = float(filters['jc08'])
-            where.append('(CAST(jc08 AS FLOAT) >= :jc08 OR jc08 IS NULL OR jc08 = "")')
+            where.append('(CAST(`jc08` AS DECIMAL(10,3)) >= %(jc08)s OR `jc08` IS NULL OR `jc08` = "")')
         except Exception:
             flash('JC08は数値で入力してください', 'error')
     # engine: 選択した値以上の排気量
     if filters.get('engine'):
         try:
             params['engine'] = int(filters['engine'])
-            where.append('(engine >= :engine OR engine IS NULL OR engine = "")')
+            where.append('(`engine` >= %(engine)s OR `engine` IS NULL OR `engine` = "")')
         except Exception:
             flash('排気量は整数で入力してください', 'error')
     # Sorting parameters (whitelist columns)
@@ -88,9 +86,9 @@ def index():
     # Secondary ordering to keep results deterministic (price then year desc by default)
     secondary_order = ''
     if sort != 'price':
-        secondary_order = ', price ASC'
+        secondary_order = ', `price` ASC'
     if sort != 'year':
-        secondary_order += ', year DESC'
+        secondary_order += ', `year` DESC'
     # Build SQL dynamically
     where = []
     params = {}
@@ -101,78 +99,98 @@ def index():
         qcols = ['manufacturer', 'name', 'mission1', 'mission2', 'bodytype', 'repair', 'location', 'option', 'category', 'wd', 'fuel', 'handle', 'url', 'raw_json']
         like_clauses = []
         for c in qcols:
-            like_clauses.append(f"{c} LIKE :q")
+            like_clauses.append(f"`{c}` LIKE %(q)s")
         where.append('(' + ' OR '.join(like_clauses) + ')')
         params['q'] = f"%{q}%"
     if filters['manufacturer']:
-        where.append('manufacturer = :manufacturer')
+        where.append('`manufacturer` = %(manufacturer)s')
         params['manufacturer'] = filters['manufacturer']
     if filters['name']:
-        where.append('name = :name')
+        where.append('`name` = %(name)s')
         params['name'] = filters['name']
     if filters['mission1']:
-        where.append('mission1 = :mission1')
+        where.append('`mission1` = %(mission1)s')
         params['mission1'] = filters['mission1']
     if filters['mission2']:
-        where.append('mission2 = :mission2')
+        where.append('`mission2` = %(mission2)s')
         params['mission2'] = filters['mission2']
     if filters['category']:
-        where.append('category = :category')
+        where.append('`category` = %(category)s')
         params['category'] = filters['category']
     if filters['bodytype']:
-        where.append('bodytype = :bodytype')
+        where.append('`bodytype` = %(bodytype)s')
         params['bodytype'] = filters['bodytype']
     if filters['repair']:
-        where.append('repair = :repair')
+        where.append('`repair` = %(repair)s')
         params['repair'] = filters['repair']
     if filters['location']:
-        where.append('location = :location')
+        where.append('`location` = %(location)s')
         params['location'] = filters['location']
     if filters['door']:
-        where.append('door = :door')
+        where.append('`door` = %(door)s')
         params['door'] = filters['door']
     if filters['year']:
         try:
             params['year'] = int(filters['year'])
-            where.append('(year >= :year OR year IS NULL)')
+            where.append('(`year` >= %(year)s OR `year` IS NULL)')
         except Exception:
             flash('年式は整数で入力してください', 'error')
     if filters['price_min']:
         try:
             params['price_min'] = int(filters['price_min'])
-            where.append('price >= :price_min')
+            where.append('`price` >= %(price_min)s')
         except Exception:
             flash('price_minは整数', 'error')
     if filters['price_max']:
         try:
             params['price_max'] = int(filters['price_max'])
-            where.append('price <= :price_max')
+            where.append('`price` <= %(price_max)s')
         except Exception:
             flash('price_maxは整数', 'error')
-    sql = 'SELECT id,manufacturer,name,price,year,rd,engine,mission1,mission2,bodytype,repair,location,wd,seat,door,fuel,handle,jc08,option,category,url FROM car'
+    # listing テーブルへ統一 (site カラムは今後のフィルタ拡張用に保持可能)
+    sql = 'SELECT site,id,manufacturer,name,price,year,rd,engine,mission1,mission2,bodytype,repair,location,wd,seat,door,fuel,handle,jc08,`option`,category,url FROM listing'
     if where:
         sql += ' WHERE ' + ' AND '.join(where)
-    sql += f' ORDER BY {sort} {dir_.upper()}{secondary_order} LIMIT 300'
-    print("[SQL QUERY]", sql)
-    print("[SQL PARAMS]", params)
+    sql += f' ORDER BY {sort} {dir_.upper()}{secondary_order} LIMIT 1000'
+    # クエリログ (INFO)
+    try:
+        logger.Logger.bind(__name__).info(f"SearchSQL main: {sql} params={params}")
+    except Exception:
+        pass
     # Fetch distinct values for dropdowns
-    import sqlite3
     from core.db import get_connection
     conn = get_connection()
     try:
-        with conn:
+        with conn.cursor() as cur:
             # Log the SQL and params at DEBUG level for troubleshooting. Do not let logging break the request.
             try:
-                logger.Logger.bind(__name__).debug("Search SQL: %s params=%s", sql, params)
+                logger.Logger.bind(__name__).info(f"SearchSQL exec: {sql} params={params}")
             except Exception:
                 pass
-            
-            cur = conn.execute(sql, params)
-            rows = [dict(zip([c[0] for c in cur.description], r)) for r in cur.fetchall()]
+            cur.execute(sql, params)
+            fetched = cur.fetchall()
+            rows = []
+            for r in fetched:
+                # pymysql DictCursor gives dict
+                if isinstance(r, dict):
+                    rows.append(r)
+                else:
+                    # fallback tuple
+                    rows.append(dict(zip([c[0] for c in cur.description], r)))
             
             def _vals(col):
-                c2 = conn.execute(f'SELECT DISTINCT {col} FROM goo WHERE {col} IS NOT NULL AND {col} != "" ORDER BY {col} LIMIT 200').fetchall()
-                return [v[0] for v in c2]
+                # listing から distinct 取得
+                with conn.cursor() as c2:
+                    sql_distinct = f'SELECT DISTINCT `{col}` AS val FROM listing WHERE `{col}` IS NOT NULL AND `{col}` != "" ORDER BY `{col}` LIMIT 200'
+                    c2.execute(sql_distinct)
+                    got = c2.fetchall()
+                    vals = []
+                    for v in got:
+                        if isinstance(v, dict):
+                            vals.append(v.get('val'))
+                        else:
+                            vals.append(v[0])
+                    return vals
             
             bodytypes = _vals('bodytype')
             manufacturers = _vals('manufacturer')
@@ -182,7 +200,9 @@ def index():
             mission2s = _vals('mission2')
             repairs = _vals('repair')
             locations = _vals('location')
-            years = [r[0] for r in conn.execute('SELECT DISTINCT year FROM goo WHERE year IS NOT NULL ORDER BY year DESC LIMIT 50').fetchall()]
+            with conn.cursor() as cy:
+                cy.execute('SELECT DISTINCT `year` AS y FROM listing WHERE `year` IS NOT NULL ORDER BY `year` DESC LIMIT 50')
+                years = [(r.get('y') if isinstance(r, dict) else r[0]) for r in cy.fetchall()]
             categories = _vals('category')
             wds = _vals('wd')
             seats = _vals('seat')

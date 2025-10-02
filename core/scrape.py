@@ -6,8 +6,10 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from .client import CarSensorClient
 from app.scrapers.carsensor.carsensor_parser import parse_cars_carsensor, get_next_page_url_carsensor, parse_car_detail
-from app.db import init_db, bulk_upsert_cars, truncate_goo, bulk_insert_goo, bulk_insert_listing
+from app.db import init_db, bulk_insert_listing
 from .logger import Logger
+from .dump import dump_page
+from .encoding import decode_response
 
 
 log = Logger.bind(__name__)
@@ -29,14 +31,12 @@ class Scrape:
         self.page_delay = page_delay
     
     # ---- Public API ----
-    def run(self, pages: int, params: Dict[str, Any], *, flush_pages: Optional[int] = None) -> Path:
+    def run(self, pages: int, params: Dict[str, Any], *, flush_pages: Optional[int] = None, dump_dir: Optional[str] = None) -> Path:
         """Execute scraping for a given number of pages and return summary file path."""
         t_total_start = time.perf_counter()
         all_cars: List[Any] = []
         total_inserted = 0
-        init_db()
-        # Truncate goo table at start per requirement
-        truncate_goo()
+        init_db()  # listing スキーマ初期化（他テーブルは非使用）
         pages_fetched = 0
         with CarSensorClient() as client:
             # CarSensor初回ページ (paramsは現状未使用)
@@ -49,6 +49,14 @@ class Scrape:
                 all_cars.extend(cars)
                 # --- 詳細ページ取得 ---
                 self._enrich_with_details(client, cars)
+            if dump_dir:
+                try:
+                    dump_page(dump_dir=Path(dump_dir), site='carsensor', page_number=1, url='page1', html=html, records=cars or [], meta={
+                        'stage': 'initial',
+                        'chosen_encoding': 'utf-8'
+                    })
+                except Exception as e:  # noqa: BLE001
+                    log.warn(f"dump page failed page=1 error={e}")
             elapsed_ms = (time.perf_counter() - t_page_start) * 1000.0
             log.info(f"Page done page=1 records={len(cars)} total={len(all_cars)} {elapsed_ms:.1f}ms")
             pages_fetched = 1
@@ -67,9 +75,7 @@ class Scrape:
                 try:
                     resp = client.session.get(next_url, timeout=client.config.timeout)
                     resp.raise_for_status()
-                    # 念のため charset 明示 (ページ遷移後も UTF-8 だが推測誤りや一部環境差異防止)
-                    resp.encoding = 'utf-8'
-                    html = resp.text
+                    html = decode_response(resp)
                 except Exception as e:  # noqa: BLE001
                     log.warn(f"Page fetch fail page={target_page} error={e}")
                     break
@@ -83,6 +89,14 @@ class Scrape:
                 pages_fetched += 1
                 elapsed_ms = (time.perf_counter() - t_page_start) * 1000.0
                 log.info(f"Page done page={target_page} records={len(cars)} total_buffer={len(all_cars)} {elapsed_ms:.1f}ms")
+                if dump_dir:
+                    try:
+                        dump_page(dump_dir=Path(dump_dir), site='carsensor', page_number=target_page, url=next_url, html=html, records=cars or [], meta={
+                            'stage': 'loop',
+                            'chosen_encoding': 'utf-8'
+                        })
+                    except Exception as e:  # noqa: BLE001
+                        log.warn(f"dump page failed page={target_page} error={e}")
                 # セグメントフラッシュ: flush_pages 毎に listing へ upsert して途中中断耐性を高める
                 if flush_pages and pages_fetched % flush_pages == 0:
                     try:
@@ -142,16 +156,9 @@ class Scrape:
         # write to unified `listing` table with site='carsensor'
         inserted = 0
         if all_cars:
-            inserted = bulk_insert_listing(all_cars, site='carsensor') if bulk_insert_listing else bulk_insert_goo(all_cars)
+            inserted = bulk_insert_listing(all_cars, site='carsensor') if bulk_insert_listing else 0
             total_inserted += inserted
         log.info(f"listing (carsensor) final_insert records={inserted} total_inserted={total_inserted}")
-        # car テーブルにも同内容を upsert (分析/将来差分用途)
-        try:
-            from .db import bulk_upsert_cars
-            upserted = bulk_upsert_cars(all_cars)
-            log.info(f"car upsert records={upserted}")
-        except Exception as e:  # noqa: BLE001
-            log.warn(f"car upsert failed error={e}")
         # Build per-bodytype summaries (price ascending)
         db_rows = [c.to_db_row() for c in all_cars]
         body_files = self.write_grouped_summaries(db_rows)
@@ -367,8 +374,7 @@ class Scrape:
                 if resp.status_code != 200:
                     log.debug(f"detail skip status={resp.status_code} url={detail_url}")
                     continue
-                resp.encoding = 'utf-8'
-                data = parse_car_detail(resp.text)
+                data = parse_car_detail(decode_response(resp))
                 if not data:
                     continue
                 # 上書き (None を無理に書かない)

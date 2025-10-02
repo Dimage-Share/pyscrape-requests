@@ -44,6 +44,7 @@ def run_goonet(pages: int = 300, delay: float = 1.0):
     from app.scrapers.goonet.client import GooNetClient
     from app.scrapers.goonet import parser, models
     from app.db import init_db, bulk_insert_listing
+    from core.encoding import decode_response
     print(f"Starting Goo-net scrape for {pages} pages (delay={delay})")
     init_db()
     all_records = []
@@ -71,8 +72,7 @@ def run_goonet(pages: int = 300, delay: float = 1.0):
                 logger.debug('No next page; stopping')
                 break
             resp = client.session.get(next_url, timeout=client.config.timeout)
-            resp.encoding = 'utf-8'
-            html = resp.text
+            html = decode_response(resp)
             new_items = parser.parse_cars(html) if hasattr(parser, 'parse_cars') else parser.parse_summary(html)
             if new_items:
                 for it in new_items:

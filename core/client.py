@@ -87,8 +87,34 @@ class GooNetClient:
         elapsed = time.time() - start
         log.debug(f"http get done url={url} final={resp.url} elapsed={elapsed:.2f}s status={resp.status_code}")
         resp.raise_for_status()
-        # 明示的にUTF-8扱い (一部サイトで charset未指定時に推測誤り→文字化け防止)
-        resp.encoding = 'utf-8'
+        # Determine encoding safely instead of forcing UTF-8 which can corrupt
+        # responses that are actually encoded in e.g. EUC-JP. Priority:
+        # 1) charset from Content-Type header (if present)
+        # 2) requests' apparent_encoding (chardet-like detection)
+        # 3) fallback to 'utf-8'
+        try:
+            content_type = resp.headers.get('Content-Type', '') or ''
+            # look for charset=xxx in Content-Type
+            m = None
+            if 'charset=' in content_type.lower():
+                # crude but effective parsing
+                try:
+                    parts = [p.strip() for p in content_type.split(';')]
+                    for p in parts:
+                        if p.lower().startswith('charset='):
+                            m = p.split('=', 1)[1].strip().strip('"')
+                            break
+                except Exception:
+                    m = None
+            if m:
+                resp.encoding = m
+            elif resp.apparent_encoding:
+                resp.encoding = resp.apparent_encoding
+            else:
+                resp.encoding = 'utf-8'
+        except Exception:
+            # Best-effort: fall back to utf-8 to avoid raising here
+            resp.encoding = 'utf-8'
         return resp.text
     
     def close(self):
@@ -112,10 +138,10 @@ class CarSensorClient(GooNetClient):
     get_summary_page(params) は params を無視し最初のURLを返す。
     追加ページは Scrape 側で next URL を直接 session.get する運用。
     """
-
+    
     def __init__(self, config: Optional[CarSensorClientConfig] = None):  # type: ignore[override]
         super().__init__(config=config or CarSensorClientConfig())
-
+    
     def get_summary_page(self, params: Optional[Dict[str, Any]] = None) -> str:  # type: ignore[override]
         url = _resolved_carsensor_url
         if not getattr(self, '_logged_base', False):
