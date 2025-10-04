@@ -225,7 +225,7 @@
 			<script id="init-json" type="application/json">{{ {
 				'manufacturer': request.args.get('manufacturer',''),
 				'name': request.args.get('name',''),
-				'year_min': request.args.get('year_min',''),
+				'year': request.args.get('year',''),
 				'price_max': request.args.get('price_max',''),
 				'category': request.args.get('category',''),
 				'wd': request.args.get('wd',''),
@@ -306,8 +306,14 @@
 								if(INIT.name){ sel.value = INIT.name; sel.style.display = 'inline-block'; }
 							})();
 
-							// year >= input
-							(function(){ const inp=document.createElement('input'); inp.type='number'; inp.name='year_min'; inp.placeholder='年'; inp.classList.add('hdr-ctrl'); insertControlById('ctrl-year', inp); if(INIT.year_min){ inp.value = INIT.year_min; inp.style.display='inline-block'; } })();
+							// year select (server-provided distinct years)
+							(function(){
+								const sel = document.createElement('select'); sel.name='year'; sel.classList.add('hdr-ctrl');
+								const any = document.createElement('option'); any.value=''; any.textContent=''; sel.appendChild(any);
+								(OPTIONS.year||[]).forEach(o=>{ const opt=document.createElement('option'); opt.value=o; opt.textContent=o; sel.appendChild(opt); });
+								insertControlById('ctrl-year', sel);
+								if(INIT.year){ sel.value = INIT.year; sel.style.display = 'inline-block'; }
+							})();
 
 
 

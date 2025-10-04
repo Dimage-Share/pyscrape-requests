@@ -44,6 +44,9 @@ def index():
     }
     print("[DEBUG] filters['door']:", repr(filters['door']))
     print("[DEBUG] filters['door']:", repr(filters['door']))
+    # initialize SQL builder state before adding conditional clauses
+    where = []
+    params = {}
     # wd, seat, fuel, handle: 部分一致 or null (MySQL named style %(name)s)
     if filters['wd']:
         where.append('(`wd` LIKE %(wd)s OR `wd` IS NULL OR `wd` = "")')
@@ -89,9 +92,7 @@ def index():
         secondary_order = ', `price` ASC'
     if sort != 'year':
         secondary_order += ', `year` DESC'
-    # Build SQL dynamically
-    where = []
-    params = {}
+    # Build SQL dynamically (where/params already initialized above)
     # Global free-text search across multiple columns
     q = request.args.get('q', '').strip()
     if q:
