@@ -20,8 +20,6 @@ def register(bp):
     
     @bp.route('/')
     def index():
-        # NOTE: ここで再初期化すると直前までに積み上げた wd/seat/engine/jc08 などの条件が失われるため再初期化しない
-        # (バグ修正: where/params のリセットを削除)
         # Collect filter parameters from query string
         filters = {
             'manufacturer': request.args.get('manufacturer') or '',
@@ -43,27 +41,38 @@ def register(bp):
             'handle': request.args.get('handle') or '',
             'jc08': request.args.get('jc08') or ''
         }
+        # Initialize builder state BEFORE applying any filter clauses (以前は途中でリセットされ engine 条件が消失していた)
+        where = []
+        params = {}
+        # --- First phase: numeric/LIKE 系フィルタを順次積み上げ ---
+        debug_applied = []  # collect applied conditions for debug logging
         # wd, seat, fuel, handle: 部分一致 or null
         if filters['wd']:
             where.append('(`wd` LIKE %(wd)s OR `wd` IS NULL OR `wd` = "")')
             params['wd'] = f"%{filters['wd']}%"
+            debug_applied.append('wd')
         if filters['seat']:
             where.append('`seat` = %(seat)s')
             params['seat'] = filters['seat']
-        if filters['door'] != '':
+            debug_applied.append('seat')
+        if filters['door'] != '':  # allow '0' 値防止のため != '' 判定
             where.append('`door` = %(door)s')
             params['door'] = filters['door']
+            debug_applied.append('door')
         if filters['fuel']:
             where.append('(`fuel` LIKE %(fuel)s OR `fuel` IS NULL OR `fuel` = "")')
             params['fuel'] = f"%{filters['fuel']}%"
+            debug_applied.append('fuel')
         if filters['handle']:
             where.append('(`handle` LIKE %(handle)s OR `handle` IS NULL OR `handle` = "")')
             params['handle'] = f"%{filters['handle']}%"
+            debug_applied.append('handle')
         # jc08: 入力値以上またはnull
         if filters['jc08']:
             try:
                 params['jc08'] = float(filters['jc08'])
                 where.append('(CAST(`jc08` AS FLOAT) >= %(jc08)s OR `jc08` IS NULL OR `jc08` = "")')
+                debug_applied.append('jc08>=')
             except Exception:
                 flash('JC08は数値で入力してください', 'error')
         # engine: 選択した値以上の排気量
@@ -71,6 +80,7 @@ def register(bp):
             try:
                 params['engine'] = int(filters['engine'])
                 where.append('(`engine` >= %(engine)s OR `engine` IS NULL OR `engine` = "")')
+                debug_applied.append('engine>=')
             except Exception:
                 flash('排気量は整数で入力してください', 'error')
         
@@ -90,9 +100,7 @@ def register(bp):
         if sort != 'year':
             secondary_order += ', year DESC'
         
-        # Build SQL dynamically
-        where = []
-        params = {}
+        # ここで second phase の equality 系 / free-text を追加 (初期化しないことが重要)
         # Global free-text search across multiple columns
         q = request.args.get('q', '').strip()
         if q:
@@ -105,46 +113,54 @@ def register(bp):
         if filters['manufacturer']:
             where.append('`manufacturer` = %(manufacturer)s')
             params['manufacturer'] = filters['manufacturer']
+            debug_applied.append('manufacturer=')
         if filters['name']:
             where.append('`name` = %(name)s')
             params['name'] = filters['name']
+            debug_applied.append('name=')
         if filters['mission1']:
             where.append('`mission1` = %(mission1)s')
             params['mission1'] = filters['mission1']
+            debug_applied.append('mission1=')
         if filters['mission2']:
             where.append('`mission2` = %(mission2)s')
             params['mission2'] = filters['mission2']
+            debug_applied.append('mission2=')
         if filters['category']:
             where.append('`category` = %(category)s')
             params['category'] = filters['category']
+            debug_applied.append('category=')
         if filters['bodytype']:
             where.append('`bodytype` = %(bodytype)s')
             params['bodytype'] = filters['bodytype']
+            debug_applied.append('bodytype=')
         if filters['repair']:
             where.append('`repair` = %(repair)s')
             params['repair'] = filters['repair']
+            debug_applied.append('repair=')
         if filters['location']:
             where.append('`location` = %(location)s')
             params['location'] = filters['location']
-        if filters['door']:
-            where.append('`door` = %(door)s')
-            params['door'] = filters['door']
+            debug_applied.append('location=')
         if filters['year']:
             try:
                 params['year'] = int(filters['year'])
                 where.append('(`year` >= %(year)s OR `year` IS NULL)')
+                debug_applied.append('year>=')
             except Exception:
                 flash('年式は整数で入力してください', 'error')
         if filters['price_min']:
             try:
                 params['price_min'] = int(filters['price_min'])
                 where.append('`price` >= %(price_min)s')
+                debug_applied.append('price>=')
             except Exception:
                 flash('price_minは整数', 'error')
         if filters['price_max']:
             try:
                 params['price_max'] = int(filters['price_max'])
                 where.append('`price` <= %(price_max)s')
+                debug_applied.append('price<=')
             except Exception:
                 flash('price_maxは整数', 'error')
         # listing へ統一 (site カラムも取得)
@@ -163,7 +179,7 @@ def register(bp):
         # Log query
         try:
             from core import logger as _l
-            _l.Logger.bind(__name__).info(f"SearchSQL alt: {sql} params={params}")
+            _l.Logger.bind(__name__).info(f"SearchSQL alt: {sql} params={params} applied={debug_applied} raw_filters={filters}")
         except Exception:
             pass
         

@@ -279,6 +279,90 @@ python -c "from goo_net_scrape.client import cleanup_encoding_log; print(cleanup
  - [ ] bodytype / mission 辞書管理 (外部 YAML + 自動同期)
  - [ ] 正規化ステップの統計的精度モニタリング (日次 diff レポート)
 
+## プロバイダ抽象化 / listing 統合アーキテクチャ (Platform 化)
+
+本リポジトリは Goo / CarSensor の単一用途から、複数サイト・将来別ドメイン(例: バイク・パーツ等)へ拡張可能な「プロバイダ」層を導入しました。
+
+### 目的
+1. 取得 (fetch) / パース (parse) / 次ページ遷移 (next) の最小インターフェース統一
+2. 新サイト追加時の影響範囲局所化 (既存 UI / DB ロジックは provider registry への登録のみで再利用)
+3. ダンプ/再パース/修復系ユーティリティを共通化
+
+### 構成概要
+```
+providers/
+  base.py        # Provider プロトコル & registry (register/get)
+  vehicles.py    # GooNet / CarSensor のラッパ (key: goonet / carsensor)
+core/
+  encoding.py    # レスポンス文字コードヒューリスティック
+app/db/*         # listing テーブル (site,id) 主キー統合ストア
+scripts/
+  run_provider.py         # provider を N ページ走らせ件数のみ確認
+  run_provider_to_db.py   # (追加予定) provider 結果を listing に upsert
+```
+
+### Provider インターフェース (要約)
+```python
+class Provider(Protocol):
+    key: str
+    def fetch_first(self, params: dict | None = None) -> str: ...
+    def parse_list(self, html: str) -> Iterable[Any]: ...  # 各レコード (dict / dataclass)
+    def next_page_url(self, html: str) -> str | None: ...
+    def enrich(self, record: Any) -> Any: ...  # 任意 (詳細ページ追跡など)
+```
+`vehicles.py` 内で既存 Goo / CarSensor 実装を包む薄いアダプタを作り `register()` で registry へ投入します。
+
+### listing テーブルとの接続
+ユニファイドテーブル `listing(site,id,...)` へ書き込む際は既存の `app.db.bulk_insert_listing(records, site=provider_key)` を利用します。各 provider のレコードオブジェクトが `to_db_row()` を実装するか、辞書 (該当キー) を返せば保存可能です。
+
+### 既存コードとの互換
+従来のスクリプト (例: `run_scrapes_segmented.py`) はそのまま利用できます。新規実験や別ドメイン追加時は Provider を一つ実装して registry に登録するだけです。
+
+### 追加ユースケース例
+```powershell
+# Provider 一覧表示 (簡易)
+python -c "from providers.base import available_providers; print(available_providers())"
+
+# GooNet を 5 ページ (件数のみ)
+python .\scripts\run_provider.py --provider goonet --pages 5
+
+# CarSensor を 3 ページ JSON ダンプ (件数メタのみ) 保存
+python .\scripts\run_provider.py --provider carsensor --pages 3 --dump
+```
+
+### (予定) DB 直接投入スクリプト
+`scripts/run_provider_to_db.py` で provider 結果を即 `listing` に upsert する CLI を追加予定です。想定 CLI:
+```powershell
+python .\scripts\run_provider_to_db.py --provider goonet --pages 30 --delay 1 --commit
+```
+オプション案:
+- `--dry-run` : 件数のみ表示し書き込まない
+- `--dump-dir dumps_x` : ページ HTML / JSON を併せて保存
+- `--resume` : 途中失敗後の継続 (ページ番号を内部で計算)
+
+### 実装追加手順 (新サイト)
+1. `providers/newsite.py` を作成し Provider 実装 (`key='newsite'` 等) を記述
+2. モジュール末尾で `register(NewSiteProvider())`
+3. 必要なら `record.to_db_row()` で listing カラムへマッピング
+4. `run_provider.py --provider newsite` で件数検証
+5. 問題なければ DB 投入スクリプトで upsert
+
+### 設計判断メモ
+- Provider は極小 API (詳細ページ取得や rate limit 等は enrich/周辺ユーティリティへ委譲)
+- Registry: 単純 dict による管理 (依存削減)。重複 key でエラーを即発見
+- 文字コード検出は共通 (全 Provider で再利用し再実装を回避)
+- listing 統合により UI / 分析 / 修復スクリプト群を単一テーブルに集中
+
+### 今後の拡張候補 (Platform 視点)
+- Provider ごとの rate limit / backoff ポリシー設定
+- ページ毎ダンプ構造 (JSON + HTML) を汎用化 (`dumps/<provider>/<page>.json`) し再パース共通基盤化
+- 正規化パイプライン (clean -> normalize -> classify) のステップ関数化
+- メトリクス収集 (ページ取得時間 / パース件数 / エンコーディング選択統計)
+
+---
+
+本セクションの内容は段階的に更新されます。差分仕様は `NEXT_STEPS.md` も併せて参照してください。
+
 ## 文字化け (Mojibake) の修復について
 
 過去に UTF-8 文字列が ISO-8859-1 (latin-1) として誤ってデコードされた状態で DB (`goo` テーブル) に保存された場合、
